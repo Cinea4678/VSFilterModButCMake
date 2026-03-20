@@ -3,23 +3,24 @@ name: C/C++ CI
 on: [push]
 
 jobs:
-  build:
-
+  build-windows:
     runs-on: windows-2019
-
+    strategy:
+      matrix:
+        arch: [Win32, x64]
     steps:
-    - uses: actions/checkout@v2
-    - name: build
+    - uses: actions/checkout@v4
+    - name: Configure CMake
+      run: cmake -B build -G "Visual Studio 16 2019" -A ${{ matrix.arch }} -DCMAKE_BUILD_TYPE=Release
+    - name: Build
+      run: cmake --build build --config Release
+    - name: Prepare artifacts
       shell: cmd
-      run: ("C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild" /t:Rebuild /p:WindowsTargetPlatformVersion=10.0.18362.0 /p:PlatformToolset=v142 /m /p:"Configuration=Release (MOD)" /p:Platform=Win32)
-    - name: build-x64
-      shell: cmd
-      run: ("C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild" /t:Rebuild /p:WindowsTargetPlatformVersion=10.0.18362.0 /p:PlatformToolset=v142 /m /p:"Configuration=Release (MOD)" /p:Platform=x64)
-    - name: copy
-      shell: cmd
-      run: cmake -E copy "bin\Win32\VSFilter\Release (MOD)\VSFilterMod.dll" dist\x86\VSFilterMod.dll && cmake -E copy "bin\x64\VSFilter\Release (MOD)\VSFilterMod.dll" dist\x64\VSFilterMod.dll 
-    - name: upload
-      uses: actions/upload-artifact@v2
+      run: |
+        mkdir dist
+        copy build\src\vsfilter\Release\VSFilterMod.dll dist\VSFilterMod.dll
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
       with:
-        name: VSFilterMod_bin
+        name: VSFilterMod_${{ matrix.arch }}
         path: dist
