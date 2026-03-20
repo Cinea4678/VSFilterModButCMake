@@ -47,11 +47,20 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/src/compat
 )
 
+# Platform-specific dependencies
+if(NOT WIN32)
+    find_package(Freetype REQUIRED)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(HARFBUZZ REQUIRED harfbuzz)
+    pkg_check_modules(FONTCONFIG REQUIRED fontconfig)
+endif()
+
 # Build libraries
 add_subdirectory(src/zlib)
 add_subdirectory(src/libpng)
 add_subdirectory(src/subtitles)
 add_subdirectory(src/subpic)
+add_subdirectory(src/platform)
 
 if(VSFILTERMOD_BUILD_DIRECTSHOW)
     add_subdirectory(src/BaseClasses)
