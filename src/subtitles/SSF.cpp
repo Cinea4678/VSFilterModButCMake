@@ -27,7 +27,7 @@
 #include <xmmintrin.h>
 #include <emmintrin.h>
 #include "SSF.h"
-#include "..\subpic\MemSubPic.h"
+#include "../subpic/MemSubPic.h"
 
 namespace ssf
 {
@@ -58,7 +58,8 @@ bool CRenderer::Open(CString fn, CString name)
 
     try
     {
-        if(Open(FileInputStream(fn), name))
+        ssf::FileInputStream fis(fn);
+        if(Open(fis, name))
         {
             m_fn = fn;
             return true;
@@ -103,7 +104,8 @@ void CRenderer::Append(REFERENCE_TIME rtStart, REFERENCE_TIME rtStop, LPCWSTR st
 
     try
     {
-        m_file->Append(ssf::WCharInputStream(str), (float)rtStart / 10000000, (float)rtStop / 10000000);
+        ssf::WCharInputStream wis(str);
+        m_file->Append(wis, (float)rtStart / 10000000, (float)rtStop / 10000000);
     }
     catch(Exception& e)
     {
@@ -193,7 +195,13 @@ STDMETHODIMP CRenderer::Render(SubPicDesc& spd, REFERENCE_TIME rt, double fps, R
 
 STDMETHODIMP CRenderer::GetClassID(CLSID* pClassID)
 {
+#ifdef _WIN32
     return pClassID ? *pClassID = __uuidof(this), S_OK : E_POINTER;
+#else
+    if (!pClassID) return E_POINTER;
+    memset(pClassID, 0, sizeof(*pClassID));
+    return S_OK;
+#endif
 }
 
 // ISubStream

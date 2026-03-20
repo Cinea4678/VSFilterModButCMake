@@ -21,7 +21,9 @@
 
 #pragma once
 
+#ifdef _WIN32
 #include <atlcoll.h>
+#endif
 #include "STS.h"
 
 // metadata
@@ -76,6 +78,7 @@ typedef struct
 
 class CUSFSubtitles
 {
+#ifdef _WIN32
     bool ParseUSFSubtitles(CComPtr<IXMLDOMNode> pNode);
     void ParseMetadata(CComPtr<IXMLDOMNode> pNode, metadata_t& m);
     void ParseStyle(CComPtr<IXMLDOMNode> pNode, style_t* s);
@@ -86,6 +89,7 @@ class CUSFSubtitles
     void ParseSubtitle(CComPtr<IXMLDOMNode> pNode, int start, int stop);
     void ParseText(CComPtr<IXMLDOMNode> pNode, CStringW& assstr);
     void ParseShape(CComPtr<IXMLDOMNode> pNode);
+#endif
 
 public:
     CUSFSubtitles();

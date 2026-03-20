@@ -21,8 +21,10 @@
 
 #pragma once
 
+#ifdef _WIN32
 #include <atlcoll.h>
 #include <wxutil.h>
+#endif
 #include "TextFile.h"
 #include "GFN.h"
 

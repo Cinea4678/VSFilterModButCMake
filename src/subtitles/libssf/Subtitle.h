@@ -129,7 +129,7 @@ struct Fill
     int id;
     Color color;
     float width;
-    struct Fill() : id(0) {}
+    Fill() : id(0) {}
 };
 
 struct Style
@@ -163,10 +163,10 @@ class Subtitle
     void GetStyle(Definition* pDef, Style& style);
     float GetMixWeight(Definition* pDef, float at, StringMapW<float>& offset, int default_id);
     template<class T> bool MixValue(Definition& def, T& value, float t);
-    template<> bool MixValue(Definition& def, float& value, float t);
+    bool MixValue(Definition& def, float& value, float t);
     template<class T> bool MixValue(Definition& def, T& value, float t, StringMapW<T>* n2n);
-    template<> bool MixValue(Definition& def, float& value, float t, StringMapW<float>* n2n);
-    template<> bool MixValue(Definition& def, Path& value, float t);
+    bool MixValue(Definition& def, float& value, float t, StringMapW<float>* n2n);
+    bool MixValue(Definition& def, Path& value, float t);
     void MixStyle(Definition* pDef, Style& dst, float t);
 
     void Parse(InputStream& s, Style style, float at, StringMapW<float> offset, Reference* pParentRef);

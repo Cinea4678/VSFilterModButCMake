@@ -213,7 +213,7 @@ void Rasterizer::_EvaluateLine(int x0, int y0, int x1, int y1)
 
         if(iy <= y1)
         {
-            __int64 invslope = (__int64(x1 - x0) << 16) / dy;
+            __int64 invslope = (((__int64)(x1 - x0)) << 16) / dy;
 
             while(mEdgeNext + y1 + 1 - iy > mEdgeHeapSize)
                 _ReallocEdgeBuffer(mEdgeHeapSize * 2);
@@ -248,7 +248,7 @@ void Rasterizer::_EvaluateLine(int x0, int y0, int x1, int y1)
 
         if(iy <= y0)
         {
-            __int64 invslope = (__int64(x0 - x1) << 16) / dy;
+            __int64 invslope = (((__int64)(x0 - x1)) << 16) / dy;
 
             while(mEdgeNext + y0 + 1 - iy > mEdgeHeapSize)
                 _ReallocEdgeBuffer(mEdgeHeapSize * 2);
@@ -1020,7 +1020,7 @@ void Rasterizer::Draw_noAlpha_sp_Body_0(RasterizerNfo& rnfo)
     // xo is the offset (usually negative) we have moved into the image
     // So if we have passed the switchpoint (?) switch to another colour
     // (So switchpts stores both colours *and* coordinates?)
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     int color2 = rnfo.sw[2];
     while(h--)
     {
@@ -1041,7 +1041,7 @@ void Rasterizer::Draw_noAlpha_sp_noBody_0(RasterizerNfo& rnfo)
     byte* src = rnfo.src;
     DWORD* dst = rnfo.dst;
 
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     int color2 = rnfo.sw[2];
     while(h--)
     {
@@ -1098,7 +1098,7 @@ void Rasterizer::Draw_Alpha_spFF_noBody_0(RasterizerNfo& rnfo)
     byte* src = rnfo.src;
     DWORD* dst = rnfo.dst;
 
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     int color2 = rnfo.sw[2];
     while(h--)
     {
@@ -1162,7 +1162,7 @@ void Rasterizer::Draw_Alpha_sp_noBody_0(RasterizerNfo& rnfo)
 
     byte* src = rnfo.src;
     DWORD* dst = rnfo.dst;
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     int color2 = rnfo.sw[2];
     while(h--)
     {
@@ -1241,7 +1241,7 @@ void Rasterizer::Draw_noAlpha_sp_Body_sse2(RasterizerNfo& rnfo)
     // xo is the offset (usually negative) we have moved into the image
     // So if we have passed the switchpoint (?) switch to another colour
     // (So switchpts stores both colours *and* coordinates?)
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     int color2 = rnfo.sw[2];
     while(h--)
     {
@@ -1262,7 +1262,7 @@ void Rasterizer::Draw_noAlpha_sp_noBody_sse2(RasterizerNfo& rnfo)
 
     byte* src = rnfo.src;
     DWORD* dst = rnfo.dst;
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     int color2 = rnfo.sw[2];
     while(h--)
     {
@@ -1347,7 +1347,7 @@ void Rasterizer::Draw_Alpha_sp_Body_sse2(RasterizerNfo& rnfo)
     byte* s = rnfo.s;
     DWORD* dst = rnfo.dst;
 
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     int color2 = rnfo.sw[2];
     while(h--)
     {
@@ -1382,7 +1382,7 @@ void Rasterizer::Draw_Alpha_sp_noBody_sse2(RasterizerNfo& rnfo)
     byte* src = rnfo.src;
     DWORD* dst = rnfo.dst;
 
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     int color2 = rnfo.sw[2];
     while(h--)
     {
@@ -1456,7 +1456,7 @@ void Rasterizer::Draw_Grad_noAlpha_sp_Body_0(RasterizerNfo& rnfo)
     int h = rnfo.h;
     int w = rnfo.w;
 
-    int gran = max(rnfo.sw[3] + 1 - rnfo.xo, 0);
+    int gran = max((int)(rnfo.sw[3] + 1 - rnfo.xo), 0);
     while(h--)
     {
         for(int wt = 0; wt < gran; ++wt)
@@ -1479,7 +1479,7 @@ void Rasterizer::Draw_Grad_noAlpha_sp_noBody_0(RasterizerNfo& rnfo)
     int h = rnfo.h;
     int w = rnfo.w;
 
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     while(h--)
     {
         for(int wt = 0; wt < gran; ++wt)
@@ -1537,7 +1537,7 @@ void Rasterizer::Draw_Grad_Alpha_sp_Body_0(RasterizerNfo& rnfo)
     MOD_GRADIENT mod_grad = rnfo.mod_grad;
     MOD_MOVEVC mod_vc = rnfo.mod_vc;
 
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     byte* s = rnfo.s;
     DWORD* dst = rnfo.dst;
 
@@ -1561,7 +1561,7 @@ void Rasterizer::Draw_Grad_Alpha_sp_noBody_0(RasterizerNfo& rnfo)
     MOD_GRADIENT mod_grad = rnfo.mod_grad;
     MOD_MOVEVC mod_vc = rnfo.mod_vc;
 
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     byte* src = rnfo.src;
     DWORD* dst = rnfo.dst;
 
@@ -1631,7 +1631,7 @@ void Rasterizer::Draw_Grad_noAlpha_sp_Body_sse2(RasterizerNfo& rnfo)
 
     int h = rnfo.h;
     int w = rnfo.w;
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     while(h--)
     {
         for(int wt = 0; wt < gran; ++wt)
@@ -1653,7 +1653,7 @@ void Rasterizer::Draw_Grad_noAlpha_sp_noBody_sse2(RasterizerNfo& rnfo)
 
     int h = rnfo.h;
     int w = rnfo.w;
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     while(h--)
     {
         for(int wt = 0; wt < gran; ++wt)
@@ -1718,7 +1718,7 @@ void Rasterizer::Draw_Grad_Alpha_sp_Body_sse2(RasterizerNfo& rnfo)
 
     int h = rnfo.h;
     int w = rnfo.w;
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     while(h--)
     {
         for(int wt = 0; wt < gran; ++wt)
@@ -1741,7 +1741,7 @@ void Rasterizer::Draw_Grad_Alpha_sp_noBody_sse2(RasterizerNfo& rnfo)
 
     int h = rnfo.h;
     int w = rnfo.w;
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     while(h--)
     {
         for(int wt = 0; wt < gran; ++wt)
@@ -2183,9 +2183,9 @@ void MOD_MOVEVC::clear()
     isInverse = false;
 }
 
-byte MOD_MOVEVC::GetAlphaValue(int wx, int wy)
+unsigned char MOD_MOVEVC::GetAlphaValue(int wx, int wy)
 {
-    byte alpham;
+    unsigned char alpham;
     if(!enable)
     {
 //		return 0xFF;

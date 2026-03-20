@@ -20,7 +20,7 @@
 #include "../subtitles/VobSubFile.h"
 #include "../subtitles/RTS.h"
 #include "../subtitles/SSF.h"
-#include "../SubPic/MemSubPic.h"
+#include "../subpic/MemSubPic.h"
 #include "../vsfilter/vfr.h"
 
 //

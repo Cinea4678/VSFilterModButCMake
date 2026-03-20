@@ -88,16 +88,16 @@ bool Subtitle::Parse(Definition* pDef, float start, float stop, float at)
     {
         Definition& frame = (*pDef)[L"frame"];
 
-        m_frame.reference = frame[L"reference"];
+        m_frame.reference = (LPCWSTR)frame[L"reference"];
         m_frame.resolution.cx = frame[L"resolution"][L"cx"];
         m_frame.resolution.cy = frame[L"resolution"][L"cy"];
 
         Definition& direction = (*pDef)[L"direction"];
 
-        m_direction.primary = direction[L"primary"];
-        m_direction.secondary = direction[L"secondary"];
+        m_direction.primary = (LPCWSTR)direction[L"primary"];
+        m_direction.secondary = (LPCWSTR)direction[L"secondary"];
 
-        m_wrap = (*pDef)[L"wrap"];
+        m_wrap = (LPCWSTR)(*pDef)[L"wrap"];
 
         m_layer = (*pDef)[L"layer"];
 
@@ -106,7 +106,8 @@ bool Subtitle::Parse(Definition* pDef, float start, float stop, float at)
 
         StringMapW<float> offset;
         Definition& block = (*pDef)[L"@"];
-        Parse(WCharInputStream((LPCWSTR)block), style, at, offset, dynamic_cast<Reference*>(block.m_parent));
+        WCharInputStream blockStream((LPCWSTR)block);
+        Parse(blockStream, style, at, offset, dynamic_cast<Reference*>(block.m_parent));
 
         // TODO: trimming should be done by the renderer later, after breaking the words into lines
 
@@ -175,7 +176,7 @@ void Subtitle::GetStyle(Definition* pDef, Style& style)
 
     //
 
-    style.linebreak = (*pDef)[L"linebreak"];
+    style.linebreak = (LPCWSTR)(*pDef)[L"linebreak"];
 
     Definition& placement = (*pDef)[L"placement"];
 
@@ -183,7 +184,7 @@ void Subtitle::GetStyle(Definition* pDef, Style& style)
 
     if(clip.IsValue(Definition::string))
     {
-        CStringW str = clip;
+        CStringW str = (LPCWSTR)clip;
 
         if(str == L"frame") style.placement.clip = frame;
         // else ?
@@ -248,7 +249,7 @@ void Subtitle::GetStyle(Definition* pDef, Style& style)
 
     Definition& font = (*pDef)[L"font"];
 
-    style.font.face = font[L"face"];
+    style.font.face = (LPCWSTR)font[L"face"];
     style.font.size = font[L"size"];
     font[L"weight"].GetAsNumber(style.font.weight, &m_n2n.weight);
     style.font.color.a = font[L"color"][L"a"];
@@ -270,7 +271,7 @@ void Subtitle::GetStyle(Definition* pDef, Style& style)
     style.background.color.g = background[L"color"][L"g"];
     style.background.color.b = background[L"color"][L"b"];
     style.background.size = background[L"size"];
-    style.background.type = background[L"type"];
+    style.background.type = (LPCWSTR)background[L"type"];
     style.background.blur = background[L"blur"];
 
     Definition& shadow = (*pDef)[L"shadow"];
@@ -376,14 +377,18 @@ bool Subtitle::MixValue(Definition& def, T& value, float t, StringMapW<T>* n2n)
     {
         if(n2n && def.IsValue(Definition::string))
         {
-            if(StringMapW<T>::CPair* p = n2n->Lookup(def))
+            CStringW key = (LPCWSTR)def;
+            if(typename StringMapW<T>::CPair* p = n2n->Lookup(key))
             {
                 value = p->m_value;
                 return true;
             }
         }
 
-        value = (T)def;
+        if constexpr (std::is_same_v<T, CStringW>)
+            value = CStringW((LPCWSTR)def);
+        else
+            value = (T)def;
     }
 
     return true;
@@ -398,7 +403,7 @@ bool Subtitle::MixValue(Definition& def, float& value, float t, StringMapW<float
     {
         if(n2n && def.IsValue(Definition::string))
         {
-            if(StringMap<float, CStringW>::CPair* p = n2n->Lookup(def))
+            if(StringMap<float, CStringW>::CPair* p = n2n->Lookup(CStringW((LPCWSTR)def)))
             {
                 value += (p->m_value - value) * t;
                 return true;
@@ -556,7 +561,8 @@ void Subtitle::Parse(InputStream& s, Style style, float at, StringMapW<float> of
 
                 if((*pDef)[L"@"].IsValue())
                 {
-                    Parse(WCharInputStream((LPCWSTR)(*pDef)[L"@"]), style, at, offset, pParentRef);
+                    WCharInputStream atStream((LPCWSTR)(*pDef)[L"@"]);
+                    Parse(atStream, style, at, offset, pParentRef);
                 }
 
                 s.SkipWhiteSpace();
@@ -657,10 +663,10 @@ unsigned int Fill::gen_id = 0;
 Color::operator DWORD()
 {
     DWORD c =
-        (min(max((DWORD)b, 0), 255) <<  0) |
-        (min(max((DWORD)g, 0), 255) <<  8) |
-        (min(max((DWORD)r, 0), 255) << 16) |
-        (min(max((DWORD)a, 0), 255) << 24);
+        (min(max((DWORD)b, (DWORD)0), (DWORD)255) <<  0) |
+        (min(max((DWORD)g, (DWORD)0), (DWORD)255) <<  8) |
+        (min(max((DWORD)r, (DWORD)0), (DWORD)255) << 16) |
+        (min(max((DWORD)a, (DWORD)0), (DWORD)255) << 24);
 
     return c;
 }

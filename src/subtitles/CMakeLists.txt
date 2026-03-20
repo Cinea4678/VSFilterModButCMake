@@ -21,9 +21,11 @@ add_library(libssf STATIC
 target_include_directories(libssf PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/libssf
 )
-target_include_directories(libssf PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-)
+if(WIN32)
+    target_include_directories(libssf PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+    )
+endif()
 
 if(VSFILTERMOD_BUILD_DIRECTSHOW)
     target_link_libraries(libssf PUBLIC BaseClasses)
@@ -39,27 +41,33 @@ if(MSVC)
     )
 endif()
 
-# subtitles library
+# subtitles library - core files compiled on all platforms
 add_library(subtitles STATIC
-    BaseSub.cpp
-    CCDecoder.cpp
-    CompositionObject.cpp
-    DVBSub.cpp
     GFN.cpp
-    HdmvSub.cpp
     Rasterizer.cpp
     RealTextParser.cpp
-    RenderedHdmvSubtitle.cpp
     RTS.cpp
     SSF.cpp
     STS.cpp
-    SubtitleInputPin.cpp
     TextFile.cpp
     USFSubtitles.cpp
     VobSubFile.cpp
-    VobSubFileRipper.cpp
     VobSubImage.cpp
 )
+
+# Windows-only files (DirectShow, HDMV/DVB demuxers, VOB ripper)
+if(WIN32)
+    target_sources(subtitles PRIVATE
+        BaseSub.cpp
+        CCDecoder.cpp
+        CompositionObject.cpp
+        DVBSub.cpp
+        HdmvSub.cpp
+        RenderedHdmvSubtitle.cpp
+        SubtitleInputPin.cpp
+        VobSubFileRipper.cpp
+    )
+endif()
 
 target_include_directories(subtitles PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -82,4 +90,11 @@ if(MSVC)
     target_compile_definitions(subtitles PRIVATE
         $<$<CONFIG:Debug>:_AFXDLL>
     )
+endif()
+
+# On Clang/GCC, CStringW objects have operator const wchar_t*() and can safely
+# pass through variadic functions. Suppress the non-pod-varargs error.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(subtitles PRIVATE -Wno-non-pod-varargs -Wno-class-varargs)
+    target_compile_options(libssf PRIVATE -Wno-non-pod-varargs -Wno-class-varargs)
 endif()

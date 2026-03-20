@@ -20,7 +20,9 @@
  */
 
 #include "stdafx.h"
+#ifdef _WIN32
 #include <io.h>
+#endif
 #include "TextFile.h"
 #include "GFN.h"
 
@@ -81,6 +83,7 @@ void GetSubFileNames(CString fn, CAtlArray<CString>& paths, CAtlArray<SubFile>& 
     CString title = fn.Mid(l, l2 - l);
     CString filename = title + _T(".nooneexpectsthespanishinquisition");
 
+#ifdef _WIN32
     if(!fWeb)
     {
         // struct _tfinddata_t file, file2;
@@ -156,7 +159,8 @@ void GetSubFileNames(CString fn, CAtlArray<CString>& paths, CAtlArray<SubFile>& 
             }
         }
     }
-    else if(l > 7)
+#endif // _WIN32
+    if(l > 7)
     {
         CWebTextFile wtf; // :)
         if(wtf.Open(orgpath + title + WEBSUBEXT))

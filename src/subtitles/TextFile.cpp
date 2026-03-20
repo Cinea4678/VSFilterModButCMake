@@ -21,8 +21,10 @@
 
 #include "stdafx.h"
 #include <cstdint>
+#ifdef _WIN32
 #include <atlbase.h>
 #include <afxinet.h>
+#endif
 #include "TextFile.h"
 
 CTextFile::CTextFile(enc e)
@@ -159,7 +161,7 @@ ULONGLONG CTextFile::Seek(LONGLONG lOff, UINT nFrom)
         break;
     }
 
-    lOff = max(min(lOff, len), 0) + m_offset;
+    lOff = max(min(lOff, (LONGLONG)len), (LONGLONG)0) + m_offset;
 
     pos = CStdioFile::Seek(lOff, begin) - m_offset;
 
@@ -425,7 +427,7 @@ BOOL CTextFile::ReadString(CStringW& str)
                 utf32 |= (b & 0x3f);
                 c = utf32;
                 if (c == utf32) str += c;
-                else if (sizeof c == sizeof uint16_t) {
+                else if (sizeof(c) == sizeof(uint16_t)) {
                     // Use UTF-16 encoding as fallback
                     utf32 -= 0x10000;
                     c = 0xd800 | ((utf32 >> 10) & 0x03ff);
@@ -481,6 +483,7 @@ bool CWebTextFile::Open(LPCTSTR lpszFileName)
     if(fn.Find(_T("http://")) != 0)
         return __super::Open(lpszFileName);
 
+#ifdef _WIN32
     try
     {
         CInternetSession is;
@@ -518,12 +521,15 @@ bool CWebTextFile::Open(LPCTSTR lpszFileName)
     }
 
     return __super::Open(m_tempfn);
+#else
+    // HTTP subtitle loading not supported on non-Windows
+    return false;
+#endif
 }
 
 bool CWebTextFile::Save(LPCTSTR lpszFileName, enc e)
 {
     // CWebTextFile is read-only...
-    ASSERT(0);
     return(false);
 }
 
@@ -533,7 +539,12 @@ void CWebTextFile::Close()
 
     if(!m_tempfn.IsEmpty())
     {
+#ifdef _WIN32
         _tremove(m_tempfn);
+#else
+        CStringA fn8((const wchar_t*)m_tempfn);
+        remove((const char*)fn8);
+#endif
         m_tempfn.Empty();
     }
 }

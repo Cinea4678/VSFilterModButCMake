@@ -22,9 +22,13 @@
 #pragma once
 
 #include <vector>
-#include "..\SubPic\ISubPic.h"
+#include "../subpic/ISubPic.h"
 #ifdef _VSMOD // patch m004. gradient colors
 #include "STS.h"
+#endif
+
+#ifndef _WIN32
+typedef unsigned char byte;
 #endif
 
 #ifdef _VSMOD // patch m006. moveable vector clip

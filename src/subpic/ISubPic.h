@@ -25,9 +25,16 @@
 #include <atlbase.h>
 #include <atlcoll.h>
 #else
-#include "compat/compat.h"
+#include "../compat/compat.h"
+// Strip MSVC [uuid(...)] attribute syntax
+#define DEFINE_UUID_ATTR(x)
 #endif
 #include "CoordGeom.h"
+
+// On MSVC, [uuid("...")] is used; on other compilers, strip it
+#ifndef DEFINE_UUID_ATTR
+#define DEFINE_UUID_ATTR(x) [uuid(x)]
+#endif
 
 #pragma pack(push, 1)
 struct SubPicDesc
@@ -39,7 +46,7 @@ struct SubPicDesc
 	BYTE* bitsV;
 	RECT vidrect; // video rectangle
 
-	struct SubPicDesc() {type = 0; w = h = bpp = pitch = pitchUV = 0; bits = NULL; bitsU = bitsV = NULL;}
+	SubPicDesc() {type = 0; w = h = bpp = pitch = pitchUV = 0; bits = NULL; bitsU = bitsV = NULL;}
 };
 #pragma pack(pop)
 
@@ -47,7 +54,7 @@ struct SubPicDesc
 // ISubPic
 //
 
-[uuid("449E11F3-52D1-4a27-AA61-E2733AC92CC0")]
+DEFINE_UUID_ATTR("449E11F3-52D1-4a27-AA61-E2733AC92CC0")
 interface ISubPic : public IUnknown
 {
 	STDMETHOD_(void*, GetObject) () PURE;
@@ -164,7 +171,7 @@ public:
 // ISubPicAllocator
 //
 
-[uuid("CF7C3C23-6392-4a42-9E72-0736CFF793CB")]
+DEFINE_UUID_ATTR("CF7C3C23-6392-4a42-9E72-0736CFF793CB")
 interface ISubPicAllocator : public IUnknown
 {
 	STDMETHOD (SetCurSize) (SIZE size /*[in]*/) PURE;
@@ -215,7 +222,7 @@ public:
 // ISubPicProvider
 //
 
-[uuid("D62B9A1A-879A-42db-AB04-88AA8F243CFD")]
+DEFINE_UUID_ATTR("D62B9A1A-879A-42db-AB04-88AA8F243CFD")
 interface ISubPicProvider : public IUnknown
 {
 	STDMETHOD (Lock) () PURE;
@@ -264,7 +271,7 @@ public:
 // ISubPicQueue
 //
 
-[uuid("C8334466-CD1E-4ad1-9D2D-8EE8519BD180")]
+DEFINE_UUID_ATTR("C8334466-CD1E-4ad1-9D2D-8EE8519BD180")
 interface ISubPicQueue : public IUnknown
 {
 	STDMETHOD (SetSubPicProvider) (ISubPicProvider* pSubPicProvider /*[in]*/) PURE;
@@ -381,7 +388,7 @@ public:
 // ISubPicAllocatorPresenter
 //
 
-[uuid("CF75B1F0-535C-4074-8869-B15F177F944E")]
+DEFINE_UUID_ATTR("CF75B1F0-535C-4074-8869-B15F177F944E")
 interface ISubPicAllocatorPresenter : public IUnknown
 {
 	STDMETHOD (CreateRenderer) (IUnknown** ppRenderer) PURE;
@@ -406,7 +413,7 @@ interface ISubPicAllocatorPresenter : public IUnknown
 	STDMETHOD_(bool, ResetDevice) () PURE;
 };
 
-[uuid("767AEBA8-A084-488a-89C8-F6B74E53A90F")]
+DEFINE_UUID_ATTR("767AEBA8-A084-488a-89C8-F6B74E53A90F")
 interface ISubPicAllocatorPresenter2 : public ISubPicAllocatorPresenter
 {
 	STDMETHOD (SetPixelShader2) (LPCSTR pSrcData, LPCSTR pTarget, bool bScreenSpace) PURE;
@@ -486,7 +493,7 @@ public:
 
 #endif // _WIN32 (ISubPicAllocatorPresenter)
 
-[uuid("DE11E2FB-02D3-45e4-A174-6B7CE2783BDB")]
+DEFINE_UUID_ATTR("DE11E2FB-02D3-45e4-A174-6B7CE2783BDB")
 interface ISubStream : public IPersist
 {
 	STDMETHOD_(int, GetStreamCount) () PURE;

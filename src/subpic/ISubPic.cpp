@@ -21,7 +21,9 @@
 
 #include "stdafx.h"
 #include "ISubPic.h"
-#include "..\DSUtil\DSUtil.h"
+#ifdef _WIN32
+#include "../DSUtil/DSUtil.h"
+#endif
 
 //
 // ISubPicImpl
@@ -406,6 +408,7 @@ HRESULT ISubPicQueueImpl::RenderTo(ISubPic* pSubPic, REFERENCE_TIME rtStart, REF
     return hr;
 }
 
+#ifdef _WIN32
 //
 // CSubPicQueue
 //
@@ -834,6 +837,7 @@ DWORD CSubPicQueue::ThreadProc()
 
     return(0);
 }
+#endif // _WIN32
 
 //
 // CSubPicQueueNoThread
@@ -971,6 +975,7 @@ STDMETHODIMP CSubPicQueueNoThread::GetStats(int nSubPic, REFERENCE_TIME& rtStart
     return S_OK;
 }
 
+#ifdef _WIN32
 //
 // ISubPicAllocatorPresenterImpl
 //
@@ -1152,3 +1157,4 @@ STDMETHODIMP ISubPicAllocatorPresenterImpl::SetVideoAngle(Vector v, bool fRepain
     if(fRepaint) Paint(true);
     return S_OK;
 }
+#endif // _WIN32

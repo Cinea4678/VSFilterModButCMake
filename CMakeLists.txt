@@ -4,6 +4,9 @@ project(VSFilterMod LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Enable PIC for all targets (static libs are linked into shared plugin)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 # Common options
 option(VSFILTERMOD_BUILD_DIRECTSHOW "Build DirectShow filter (Windows only)" ON)
 
@@ -26,6 +29,11 @@ add_compile_definitions(
     $<$<CONFIG:MinSizeRel>:NDEBUG>
 )
 
+# Clang: enable __super support and other MSVC extensions used in the codebase
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_compile_options(-fms-extensions)
+endif()
+
 # MSVC-specific flags
 if(MSVC)
     add_compile_options(
@@ -43,9 +51,12 @@ endif()
 
 # Include directories available to all targets
 include_directories(
-    ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/src/compat
 )
+# The include/ directory contains MSVC-specific headers (stdint.h, etc.)
+if(WIN32)
+    include_directories(${CMAKE_SOURCE_DIR}/include)
+endif()
 
 # Platform-specific dependencies
 if(NOT WIN32)

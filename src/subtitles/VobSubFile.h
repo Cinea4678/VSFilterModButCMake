@@ -21,9 +21,11 @@
 
 #pragma once
 
+#ifdef _WIN32
 #include <atlcoll.h>
+#endif
 #include "VobSubImage.h"
-#include "..\SubPic\ISubPic.h"
+#include "../subpic/ISubPic.h"
 
 #define VOBSUBIDXVER 7
 

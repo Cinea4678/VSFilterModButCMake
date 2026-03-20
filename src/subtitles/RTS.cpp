@@ -169,8 +169,13 @@ void CWord::Transform(CPoint org)
     double zrnd = m_style.mod_rand.Z * 100;
 
     srand(m_style.mod_rand.Seed);
-    // CPUID from VDub
+#if defined(__SSE2__) || defined(__aarch64__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+    bool fSSE2 = true;
+#elif defined(_WIN32)
     bool fSSE2 = !!(g_cpuid.m_flags & CCpuID::sse2);
+#else
+    bool fSSE2 = false;
+#endif
 
     // SSE code
     // speed up ~1.5-1.7x
@@ -311,7 +316,7 @@ void CWord::Transform(CPoint org)
             // randomize
             if(xrnd!=0 || yrnd!=0 || zrnd!=0)
             {
-                __declspec(align(16)) float rx[4], ry[4], rz[4]; 
+                alignas(16) float rx[4], ry[4], rz[4]; 
                 for(int k=0;k<4;k++)
                 {
                     rx[k] = xrnd > 0 ? (xrnd - rand() % (int)(xrnd * 2 + 1)) : 0;
@@ -415,16 +420,16 @@ void CWord::Transform(CPoint org)
             {
                 for(int k=0;k<mPathPointsM4;k++)
                 {
-                    mpPathPoints[i*4+k].x = static_cast<LONG>(__pointx.m128_f32[3-k]);
-                    mpPathPoints[i*4+k].y = static_cast<LONG>(__pointy.m128_f32[3-k]);
+                    mpPathPoints[i*4+k].x = static_cast<LONG>(((float*)&__pointx)[3-k]);
+                    mpPathPoints[i*4+k].y = static_cast<LONG>(((float*)&__pointy)[3-k]);
                 }
             }
             else
             {
                 for(int k=0;k<4;k++)
                 {
-                    mpPathPoints[i*4+k].x = static_cast<LONG>(__pointx.m128_f32[3-k]);
-                    mpPathPoints[i*4+k].y = static_cast<LONG>(__pointy.m128_f32[3-k]);
+                    mpPathPoints[i*4+k].x = static_cast<LONG>(((float*)&__pointx)[3-k]);
+                    mpPathPoints[i*4+k].y = static_cast<LONG>(((float*)&__pointy)[3-k]);
                 }
             }
         }
@@ -870,8 +875,9 @@ bool CPolygon::CreatePath()
 
 // CClipper
 
+static STSStyle s_clipperDefaultStyle;
 CClipper::CClipper(CStringW str, CSize size, double scalex, double scaley, bool inverse)
-    : CPolygon(STSStyle(), str, 0, 0, 0, scalex, scaley, 0)
+    : CPolygon(s_clipperDefaultStyle, str, 0, 0, 0, scalex, scaley, 0)
 {
     m_size.cx = m_size.cy = 0;
     m_pAlphaMask = NULL;
@@ -1778,7 +1784,7 @@ void CRenderedTextSubtitle::ParseEffect(CSubtitle* sub, CString str)
         if(!e) return;
 
         sub->m_effects[e->type = EF_BANNER] = e;
-        e->param[0] = (int)(max(1.0 * delay / sub->m_scalex, 1));
+        e->param[0] = (int)(max(1.0 * delay / sub->m_scalex, 1.0));
         e->param[1] = lefttoright;
         e->param[2] = (int)(sub->m_scalex * fadeawaywidth);
 
@@ -1802,7 +1808,7 @@ void CRenderedTextSubtitle::ParseEffect(CSubtitle* sub, CString str)
         sub->m_effects[e->type = EF_SCROLL] = e;
         e->param[0] = (int)(sub->m_scaley * top * 8);
         e->param[1] = (int)(sub->m_scaley * bottom * 8);
-        e->param[2] = (int)(max(1.0 * delay / sub->m_scaley, 1));
+        e->param[2] = (int)(max(1.0 * delay / sub->m_scaley, 1.0));
         e->param[3] = (effect.GetLength() == 12);
         e->param[4] = (int)(sub->m_scaley * fadeawayheight);
     }
@@ -2329,7 +2335,7 @@ bool CRenderedTextSubtitle::ParseSSATag(CSubtitle* sub, CStringW str, STSStyle& 
             }
             else if(params.GetCount() == 2 && !sub->m_pClipper)
             {
-                int scale = max(wcstol(p, NULL, 10), 1);
+                int scale = (int)max(wcstol(p, NULL, 10), 1L);
                 sub->m_pClipper = DNew CClipper(params[1], CSize(m_size.cx >> 3, m_size.cy >> 3), sub->m_scalex / (1 << (scale - 1)), sub->m_scaley / (1 << (scale - 1)), invert);
             }
             else if(params.GetCount() == 4)
@@ -3914,7 +3920,13 @@ STDMETHODIMP CRenderedTextSubtitle::Render(SubPicDesc& spd, REFERENCE_TIME rt, d
 
 STDMETHODIMP CRenderedTextSubtitle::GetClassID(CLSID* pClassID)
 {
+#ifdef _WIN32
     return pClassID ? *pClassID = __uuidof(this), S_OK : E_POINTER;
+#else
+    if (!pClassID) return E_POINTER;
+    memset(pClassID, 0, sizeof(*pClassID));
+    return S_OK;
+#endif
 }
 
 // ISubStream
@@ -3926,21 +3938,30 @@ STDMETHODIMP_(int) CRenderedTextSubtitle::GetStreamCount()
 
 STDMETHODIMP CRenderedTextSubtitle::GetStreamInfo(int iStream, WCHAR** ppName, LCID* pLCID)
 {
-    USES_CONVERSION;
     if(iStream != 0) return E_INVALIDARG;
 
     if(ppName)
     {
+#ifdef _WIN32
+        USES_CONVERSION;
         if(!(*ppName = (WCHAR*)CoTaskMemAlloc((m_name.GetLength() + 1) * sizeof(WCHAR))))
             return E_OUTOFMEMORY;
+#else
+        *ppName = (WCHAR*)malloc((m_name.GetLength() + 1) * sizeof(WCHAR));
+        if(!*ppName) return E_OUTOFMEMORY;
+#endif
 
         wcscpy(*ppName, CStringW(m_name));
 
         if(pLCID)
         {
+#ifdef _WIN32
             *pLCID = ISO6391ToLcid(W2A(*ppName));
             if(*pLCID == 0)
                 *pLCID = ISO6392ToLcid(W2A(*ppName));
+#else
+            *pLCID = 0;
+#endif
         }
     }
 
@@ -3959,7 +3980,9 @@ STDMETHODIMP CRenderedTextSubtitle::SetStream(int iStream)
 
 STDMETHODIMP CRenderedTextSubtitle::Reload()
 {
+#ifdef _WIN32
     CFileStatus s;
     if(!CFile::GetStatus(m_path, s)) return E_FAIL;
+#endif
     return !m_path.IsEmpty() && Open(m_path, DEFAULT_CHARSET) ? S_OK : E_FAIL;
 }

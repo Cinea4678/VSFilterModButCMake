@@ -28,8 +28,12 @@ Exception::Exception(LPCTSTR fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
+#ifdef _WIN32
     int len = _vsctprintf(fmt, args) + 1;
     if(len > 0) _vstprintf_s(m_msg.GetBufferSetLength(len), len, fmt, args);
+#else
+    m_msg.FormatV(fmt, args);
+#endif
     va_end(args);
 }
 }

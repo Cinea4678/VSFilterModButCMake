@@ -19,9 +19,10 @@
  *
  */
 
-#include "StdAfx.h"
-#include "usfsubtitles.h"
-#include <msxml.h>
+#include "stdafx.h"
+#include "USFSubtitles.h"
+
+#ifdef _WIN32
 
 #define DeclareNameAndValue(pNode, name, val) \
     CComBSTR name; \
@@ -787,3 +788,22 @@ void CUSFSubtitles::ParseShape(CComPtr<IXMLDOMNode> pNode)
 {
     // no specs on this yet
 }
+
+#else // !_WIN32
+
+// Non-Windows stubs - USF parsing requires MSXML which is Windows-only
+
+CUSFSubtitles::CUSFSubtitles() {}
+CUSFSubtitles::~CUSFSubtitles() {}
+
+bool CUSFSubtitles::Read(LPCTSTR fn)
+{
+    return false;
+}
+
+bool CUSFSubtitles::ConvertToSTS(CSimpleTextSubtitle& sts)
+{
+    return false;
+}
+
+#endif // _WIN32

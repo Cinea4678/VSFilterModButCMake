@@ -21,7 +21,9 @@
 
 #pragma once
 
+#ifdef _WIN32
 #include <afx.h>
+#endif
 
 class CTextFile : protected CStdioFile
 {

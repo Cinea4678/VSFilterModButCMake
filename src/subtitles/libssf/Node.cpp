@@ -31,7 +31,7 @@ namespace ssf
 {
 Node::Node(NodeFactory* pnf, CStringW name)
     : m_pnf(pnf)
-    , m_type('?')
+    , m_type(L"?")
     , m_name(name)
     , m_priority(PNormal)
     , m_predefined(false)
@@ -59,7 +59,7 @@ bool Node::IsNameUnknown()
 
 bool Node::IsTypeUnknown()
 {
-    return m_type.IsEmpty() || m_type == '?';
+    return m_type.IsEmpty() || m_type == L"?";
 }
 
 bool Node::IsType(CStringW type)
@@ -290,7 +290,7 @@ void Definition::GetAsNumber(Number<T>& n, StringMapW<T>* n2n)
     {
         if(m_status == node) throw Exception(_T("expected value type"));
 
-        if(StringMapW<T>::CPair* p = n2n->Lookup(str))
+        if(typename StringMapW<T>::CPair* p = n2n->Lookup(str))
         {
             n.value = p->m_value;
             return;
@@ -406,10 +406,10 @@ bool Definition::GetAsTime(Time& t, StringMapW<float>& offset, StringMapW<float>
     Definition& time = (*this)[L"time"];
 
     CStringW id;
-    if(time[L"id"].IsValue()) id = time[L"id"];
+    if(time[L"id"].IsValue()) id = (LPCWSTR)time[L"id"];
     else id.Format(L"%d", default_id);
 
-    float scale = time[L"scale"].IsValue() ? time[L"scale"] : 1.0f;
+    float scale = time[L"scale"].IsValue() ? (float)time[L"scale"] : 1.0f;
 
     if(time[L"start"].IsValue() && time[L"stop"].IsValue())
     {
@@ -524,7 +524,7 @@ void Definition::Dump(OutputStream& s, int level, bool fLast)
     if(!IsTypeUnknown() && !m_autotype) str += m_type;
     if(!IsNameUnknown()) str += '#' + m_name;
     str += ':';
-    s.PutString(L"%s", str);
+    s.PutString(L"%s", (LPCWSTR)str);
 
     if(!m_nodes.IsEmpty())
     {
@@ -540,7 +540,7 @@ void Definition::Dump(OutputStream& s, int level, bool fLast)
             else
             {
                 ASSERT(!pNode->IsNameUnknown());
-                s.PutString(L" %s", pNode->m_name);
+                s.PutString(L" %s", (LPCWSTR)pNode->m_name);
             }
         }
 
@@ -552,21 +552,21 @@ void Definition::Dump(OutputStream& s, int level, bool fLast)
     {
         CStringW str = m_value;
         str.Replace(L"\"", L"\\\"");
-        s.PutString(L" \"%s\";\n", str);
+        s.PutString(L" \"%s\";\n", (LPCWSTR)str);
     }
     else if(m_status == number)
     {
         CStringW str = m_value;
         if(!m_unit.IsEmpty()) str += m_unit;
-        s.PutString(L" %s;\n", str);
+        s.PutString(L" %s;\n", (LPCWSTR)str);
     }
     else if(m_status == boolean)
     {
-        s.PutString(L" %s;\n", m_value);
+        s.PutString(L" %s;\n", (LPCWSTR)m_value);
     }
     else if(m_status == block)
     {
-        s.PutString(L" {%s};\n", m_value);
+        s.PutString(L" {%s};\n", (LPCWSTR)m_value);
     }
     else
     {

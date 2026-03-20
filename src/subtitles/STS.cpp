@@ -21,11 +21,16 @@
 
 #include "stdafx.h"
 #include "STS.h"
+#ifdef _WIN32
 #include <atlbase.h>
 #include <atlconv.h>
 #include <atlstr.h>
+#endif
 
 #include "RealTextParser.h"
+#ifndef _WIN32
+#include "../dsutil/text.h"
+#endif
 #include <fstream>
 
 static long revcolor(long c)
@@ -778,7 +783,7 @@ static CStringW MicroDVD2SSA(CStringW str, bool fUnicode, int CharSet)
                 {
                     fRestore[FONTNAME] = (iswupper(code[1]) == 0);
 
-                    code.Format(L"{\\fn%s}", code.Mid(3));
+                    { CStringW tmp = code.Mid(3); code.Format(L"{\\fn%s}", (LPCWSTR)tmp); }
                     ret += code;
                 }
                 else if(!wcsnicmp(code, L"{s:", 3))
@@ -1650,17 +1655,17 @@ static bool OpenSubStationAlpha(CTextFile* file, CSimpleTextSubtitle& ret, int C
                         style->alpha[i] = (BYTE)(style->colors[i] >> 24);
                         style->colors[i] &= 0xffffff;
                     }
-                if(sver >= 5)	style->fontScaleX = max(style->fontScaleX, 0);
-                if(sver >= 5)	style->fontScaleY = max(style->fontScaleY, 0);
+                if(sver >= 5)	style->fontScaleX = max(style->fontScaleX, 0.0);
+                if(sver >= 5)	style->fontScaleY = max(style->fontScaleY, 0.0);
 #ifndef _VSMOD // patch f002. negative fontspacing at style
-                if(sver >= 5)	style->fontSpacing = max(style->fontSpacing, 0);
+                if(sver >= 5)	style->fontSpacing = max(style->fontSpacing, 0.0);
 #endif
                 style->fontAngleX = style->fontAngleY = 0;
                 style->borderStyle = style->borderStyle == 1 ? 0 : style->borderStyle == 3 ? 1 : 0;
-                style->outlineWidthX = max(style->outlineWidthX, 0);
-                style->outlineWidthY = max(style->outlineWidthY, 0);
-                style->shadowDepthX = max(style->shadowDepthX, 0);
-                style->shadowDepthY = max(style->shadowDepthY, 0);
+                style->outlineWidthX = max(style->outlineWidthX, 0.0);
+                style->outlineWidthY = max(style->outlineWidthY, 0.0);
+                style->shadowDepthX = max(style->shadowDepthX, 0.0);
+                style->shadowDepthY = max(style->shadowDepthY, 0.0);
                 if(sver <= 4)	style->scrAlignment = (style->scrAlignment & 4) ? ((style->scrAlignment & 3) + 6) // top
                                                           : (style->scrAlignment & 8) ? ((style->scrAlignment & 3) + 3) // mid
                                                           : (style->scrAlignment & 3); // bottom
@@ -1874,14 +1879,14 @@ static bool OpenXombieSub(CTextFile* file, CSimpleTextSubtitle& ret, int CharSet
                 style->marginRect.top = style->marginRect.bottom = GetInt(buff);
                 style->charSet = GetInt(buff);
 
-                style->fontScaleX = max(style->fontScaleX, 0);
-                style->fontScaleY = max(style->fontScaleY, 0);
-                style->fontSpacing = max(style->fontSpacing, 0);
+                style->fontScaleX = max(style->fontScaleX, 0.0);
+                style->fontScaleY = max(style->fontScaleY, 0.0);
+                style->fontSpacing = max(style->fontSpacing, 0.0);
                 style->borderStyle = style->borderStyle == 1 ? 0 : style->borderStyle == 3 ? 1 : 0;
-                style->outlineWidthX = max(style->outlineWidthX, 0);
-                style->outlineWidthY = max(style->outlineWidthY, 0);
-                style->shadowDepthX = max(style->shadowDepthX, 0);
-                style->shadowDepthY = max(style->shadowDepthY, 0);
+                style->outlineWidthX = max(style->outlineWidthX, 0.0);
+                style->outlineWidthY = max(style->outlineWidthY, 0.0);
+                style->shadowDepthX = max(style->shadowDepthX, 0.0);
+                style->shadowDepthY = max(style->shadowDepthY, 0.0);
 
                 ret.AddStyle(StyleName, style);
             }
@@ -2397,8 +2402,10 @@ void CSimpleTextSubtitle::ChangeUnknownStylesToDefault()
                 if(fReport)
                 {
                     CString msg;
-                    msg.Format(_T("Unknown style found: \"%s\", changed to \"Default\"!\n\nPress Cancel to ignore further warnings."), stse.style);
+                    msg.Format(_T("Unknown style found: \"%s\", changed to \"Default\"!\n\nPress Cancel to ignore further warnings."), (LPCTSTR)stse.style);
+#ifdef _WIN32
                     if(MessageBox(NULL, msg, _T("Warning"), MB_OKCANCEL | MB_ICONWARNING) != IDOK) fReport = false;
+#endif
                 }
 
                 unknown[stse.style] = NULL;

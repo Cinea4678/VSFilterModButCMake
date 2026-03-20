@@ -24,6 +24,7 @@
 
 namespace ssf
 {
+#ifdef _WIN32
 FontWrapper::FontWrapper(HDC hDC, HFONT hFont, const CStringW& key)
     : m_hFont(hFont)
     , m_key(key)
@@ -48,6 +49,18 @@ FontWrapper::~FontWrapper()
 {
     DeleteFont(m_hFont);
 }
+#else
+FontWrapper::FontWrapper(HDC hDC, HFONT hFont, const CStringW& key)
+    : m_hFont(hFont)
+    , m_key(key)
+{
+    memset(&m_tm, 0, sizeof(m_tm));
+}
+
+FontWrapper::~FontWrapper()
+{
+}
+#endif
 
 int FontWrapper::GetKernAmount(WCHAR c1, WCHAR c2)
 {

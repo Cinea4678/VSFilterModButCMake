@@ -13,7 +13,14 @@
 #include <cstring>
 #include <cstdarg>
 #include <cwchar>
+#include <type_traits>
+#include <cwctype>
 #include <mutex>
+#include <thread>
+
+// Make min/max available as unqualified names (Windows code uses min/max macros)
+using std::min;
+using std::max;
 
 // ============================================================
 // CPoint - replacement for MFC CPoint
@@ -49,6 +56,8 @@ public:
     CSize(int _cx, int _cy) { cx = _cx; cy = _cy; }
     CSize(SIZE sz) { cx = sz.cx; cy = sz.cy; }
     CSize(POINT pt) { cx = pt.x; cy = pt.y; }
+
+    void SetSize(int _cx, int _cy) { cx = _cx; cy = _cy; }
 
     bool operator==(const SIZE& sz) const { return cx == sz.cx && cy == sz.cy; }
     bool operator!=(const SIZE& sz) const { return !(*this == sz); }
@@ -123,8 +132,16 @@ public:
     CRect operator|(const RECT& rc) const { CRect r; r.UnionRect(this, &rc); return r; }
     CRect& operator&=(const RECT& rc) { IntersectRect(this, &rc); return *this; }
     CRect& operator|=(const RECT& rc) { UnionRect(this, &rc); return *this; }
+    CRect& operator+=(POINT pt) { OffsetRect(pt); return *this; }
+    CRect& operator-=(POINT pt) { OffsetRect(-pt.x, -pt.y); return *this; }
+    CRect& operator+=(SIZE sz) { OffsetRect(sz); return *this; }
+    CRect& operator-=(SIZE sz) { OffsetRect(-sz.cx, -sz.cy); return *this; }
     CRect operator+(POINT pt) const { CRect r(*this); r.OffsetRect(pt); return r; }
     CRect operator-(POINT pt) const { CRect r(*this); r.OffsetRect(-pt.x, -pt.y); return r; }
+    CRect& operator+=(const RECT& rc) { left += rc.left; top += rc.top; right += rc.right; bottom += rc.bottom; return *this; }
+    CRect& operator-=(const RECT& rc) { left -= rc.left; top -= rc.top; right -= rc.right; bottom -= rc.bottom; return *this; }
+    CRect operator+(const RECT& rc) const { return CRect(left + rc.left, top + rc.top, right + rc.right, bottom + rc.bottom); }
+    CRect operator-(const RECT& rc) const { return CRect(left - rc.left, top - rc.top, right - rc.right, bottom - rc.bottom); }
 
     operator RECT*() { return this; }
     operator const RECT*() const { return this; }
@@ -147,10 +164,14 @@ public:
     }
     CStringW(const std::wstring& s) : m_str(s) {}
     CStringW(wchar_t ch, int repeat = 1) : m_str(repeat, ch) {}
+    CStringW(char ch) : m_str(1, (wchar_t)(unsigned char)ch) {}
+    CStringW(int ch) : m_str(1, (wchar_t)ch) {}
+    // Prevent implicit construction from floating-point types
+    CStringW(float) = delete;
+    CStringW(double) = delete;
 
     // Conversions
     operator const wchar_t*() const { return m_str.c_str(); }
-    operator LPCWSTR() const { return m_str.c_str(); }
 
     const wchar_t* GetString() const { return m_str.c_str(); }
     int GetLength() const { return (int)m_str.length(); }
@@ -173,13 +194,15 @@ public:
     friend CStringW operator+(const CStringW& a, const wchar_t* b) { return CStringW(a.m_str + (b ? b : L"")); }
     friend CStringW operator+(const wchar_t* a, const CStringW& b) { return CStringW((a ? a : L"") + b.m_str); }
     friend CStringW operator+(const CStringW& a, wchar_t ch) { return CStringW(a.m_str + std::wstring(1, ch)); }
+    friend CStringW operator+(wchar_t ch, const CStringW& b) { return CStringW(std::wstring(1, ch) + b.m_str); }
+    friend CStringW operator+(char ch, const CStringW& b) { return CStringW(std::wstring(1, (wchar_t)ch) + b.m_str); }
 
     // Comparison
     int Compare(const wchar_t* s) const { return m_str.compare(s ? s : L""); }
     int CompareNoCase(const wchar_t* s) const {
         std::wstring a = m_str, b = s ? s : L"";
-        std::transform(a.begin(), a.end(), a.begin(), ::towlower);
-        std::transform(b.begin(), b.end(), b.begin(), ::towlower);
+        std::transform(a.begin(), a.end(), a.begin(), towlower);
+        std::transform(b.begin(), b.end(), b.begin(), towlower);
         return a.compare(b);
     }
 
@@ -218,14 +241,38 @@ public:
         auto pos = m_str.find_first_of(chars);
         return pos == std::wstring::npos ? -1 : (int)pos;
     }
+    CStringW SpanExcluding(const wchar_t* chars) const {
+        auto pos = m_str.find_first_of(chars);
+        if (pos == std::wstring::npos) return *this;
+        return CStringW(m_str.substr(0, pos));
+    }
+    CStringW SpanIncluding(const wchar_t* chars) const {
+        auto pos = m_str.find_first_not_of(chars);
+        if (pos == std::wstring::npos) return *this;
+        return CStringW(m_str.substr(0, pos));
+    }
+    CStringW Tokenize(const wchar_t* delimiters, int& start) const {
+        if (start < 0) return CStringW();
+        // Skip leading delimiters
+        auto pos = m_str.find_first_not_of(delimiters, start);
+        if (pos == std::wstring::npos) { start = -1; return CStringW(); }
+        // Find end of token
+        auto end = m_str.find_first_of(delimiters, pos);
+        if (end == std::wstring::npos) {
+            start = -1;
+            return CStringW(m_str.substr(pos));
+        }
+        start = (int)end;
+        return CStringW(m_str.substr(pos, end - pos));
+    }
 
     // Modification
     CStringW& MakeLower() {
-        std::transform(m_str.begin(), m_str.end(), m_str.begin(), ::towlower);
+        std::transform(m_str.begin(), m_str.end(), m_str.begin(), towlower);
         return *this;
     }
     CStringW& MakeUpper() {
-        std::transform(m_str.begin(), m_str.end(), m_str.begin(), ::towupper);
+        std::transform(m_str.begin(), m_str.end(), m_str.begin(), towupper);
         return *this;
     }
     CStringW& Trim() { TrimLeft(); TrimRight(); return *this; }
@@ -243,13 +290,24 @@ public:
         m_str.erase(0, m_str.find_first_not_of(ch));
         return *this;
     }
+    CStringW& TrimLeft(const wchar_t* chars) {
+        m_str.erase(0, m_str.find_first_not_of(chars));
+        return *this;
+    }
     CStringW& TrimRight(wchar_t ch) {
         auto pos = m_str.find_last_not_of(ch);
         if (pos != std::wstring::npos) m_str.erase(pos + 1);
         else m_str.clear();
         return *this;
     }
+    CStringW& TrimRight(const wchar_t* chars) {
+        auto pos = m_str.find_last_not_of(chars);
+        if (pos != std::wstring::npos) m_str.erase(pos + 1);
+        else m_str.clear();
+        return *this;
+    }
     CStringW& Trim(wchar_t ch) { TrimLeft(ch); TrimRight(ch); return *this; }
+    CStringW& Trim(const wchar_t* chars) { TrimLeft(chars); TrimRight(chars); return *this; }
 
     int Replace(const wchar_t* old_str, const wchar_t* new_str) {
         int count = 0;
@@ -319,6 +377,10 @@ public:
             auto pos = m_str.find(L'\0');
             if (pos != std::wstring::npos) m_str.resize(pos);
         }
+    }
+    wchar_t* GetBufferSetLength(int newLen) {
+        m_str.resize(newLen);
+        return &m_str[0];
     }
     int GetAllocLength() const { return (int)m_str.capacity(); }
 
@@ -413,16 +475,21 @@ typedef CStringW CString;
 // ATL Collection replacements
 // ============================================================
 
+// POSITION type (MFC list/map iteration)
+typedef void* POSITION;
+
 template<typename T>
 class CAtlArray : public std::vector<T> {
 public:
     using std::vector<T>::vector;
 
     size_t GetCount() const { return this->size(); }
+    size_t GetSize() const { return this->size(); }
     bool IsEmpty() const { return this->empty(); }
     size_t Add(const T& val) { this->push_back(val); return this->size() - 1; }
     void RemoveAll() { this->clear(); }
     void RemoveAt(size_t index) { this->erase(this->begin() + index); }
+    void RemoveAt(size_t index, size_t count) { this->erase(this->begin() + index, this->begin() + index + count); }
     void SetCount(size_t count) { this->resize(count); }
     T* GetData() { return this->data(); }
     const T* GetData() const { return this->data(); }
@@ -434,54 +501,171 @@ public:
     void Append(const CAtlArray& other) { this->insert(this->end(), other.begin(), other.end()); }
 };
 
+// MFC-compatible array types
+typedef CAtlArray<UINT> CUIntArray;
+typedef CAtlArray<DWORD> CDWordArray;
+typedef CAtlArray<BYTE> CByteArray;
+
 template<typename T>
 class CAtlList {
     std::list<T> m_list;
+
+    // Convert iterator to POSITION (void*) by taking address of element
+    POSITION IterToPos(typename std::list<T>::iterator it) const {
+        if (it == m_list.end()) return nullptr;
+        return (POSITION)&(*it);
+    }
+    typename std::list<T>::iterator PosToIter(POSITION pos) {
+        for (auto it = m_list.begin(); it != m_list.end(); ++it) {
+            if ((POSITION)&(*it) == pos) return it;
+        }
+        return m_list.end();
+    }
+    typename std::list<T>::const_iterator PosToIter(POSITION pos) const {
+        for (auto it = m_list.begin(); it != m_list.end(); ++it) {
+            if ((POSITION)&(*it) == pos) return it;
+        }
+        return m_list.end();
+    }
+
 public:
-    typedef typename std::list<T>::iterator POSITION_ITER;
-
-    // Position is represented as a pointer to node
-    // We use a simple index-based approach for compatibility
-    struct Position {
-        typename std::list<T>::iterator it;
-        bool valid;
-        Position() : valid(false) {}
-        Position(typename std::list<T>::iterator i) : it(i), valid(true) {}
-        operator bool() const { return valid; }
-    };
-    typedef Position* POSITION;
-
     size_t GetCount() const { return m_list.size(); }
     bool IsEmpty() const { return m_list.empty(); }
-    void RemoveAll() { m_list.clear(); m_positions.clear(); }
+    void RemoveAll() { m_list.clear(); }
 
-    // Note: MFC CAtlList uses POSITION as opaque pointer
-    // We simplify by using index. This won't be perfectly compatible
-    // but covers common usage patterns.
     T& GetHead() { return m_list.front(); }
     const T& GetHead() const { return m_list.front(); }
     T& GetTail() { return m_list.back(); }
     const T& GetTail() const { return m_list.back(); }
 
-    void AddTail(const T& val) { m_list.push_back(val); }
-    void AddHead(const T& val) { m_list.push_front(val); }
-    T RemoveHead() { T val = m_list.front(); m_list.pop_front(); return val; }
-    T RemoveTail() { T val = m_list.back(); m_list.pop_back(); return val; }
+    POSITION AddTail(const T& val) { m_list.push_back(val); return IterToPos(std::prev(m_list.end())); }
+    POSITION AddHead(const T& val) { m_list.push_front(val); return IterToPos(m_list.begin()); }
+    T RemoveHead() { T val = std::move(m_list.front()); m_list.pop_front(); return val; }
+    T RemoveTail() { T val = std::move(m_list.back()); m_list.pop_back(); return val; }
 
-    // Simplified iteration - users should migrate to range-for
+    void AddTailList(const CAtlList& other) {
+        for (const auto& v : other.m_list) m_list.push_back(v);
+    }
+    void AddTailList(const CAtlList* other) {
+        if (other) AddTailList(*other);
+    }
+
+    void RemoveAt(POSITION pos) {
+        auto it = PosToIter(pos);
+        if (it != m_list.end()) m_list.erase(it);
+    }
+
+    POSITION GetHeadPosition() const {
+        if (m_list.empty()) return nullptr;
+        return (POSITION)&m_list.front();
+    }
+    POSITION GetTailPosition() const {
+        if (m_list.empty()) return nullptr;
+        return (POSITION)&m_list.back();
+    }
+
+    T& GetNext(POSITION& pos) {
+        T& val = *(T*)pos;
+        auto it = PosToIter(pos);
+        ++it;
+        pos = (it == m_list.end()) ? nullptr : (POSITION)&(*it);
+        return val;
+    }
+    const T& GetNext(POSITION& pos) const {
+        const T& val = *(const T*)pos;
+        auto it = PosToIter(pos);
+        ++it;
+        pos = (it == m_list.end()) ? nullptr : (POSITION)&(*it);
+        return val;
+    }
+
+    T& GetPrev(POSITION& pos) {
+        T& val = *(T*)pos;
+        auto it = PosToIter(pos);
+        if (it == m_list.begin()) pos = nullptr;
+        else { --it; pos = (POSITION)&(*it); }
+        return val;
+    }
+    const T& GetPrev(POSITION& pos) const {
+        const T& val = *(const T*)pos;
+        auto it = PosToIter(pos);
+        if (it == m_list.begin()) pos = nullptr;
+        else { --it; pos = (POSITION)&(*it); }
+        return val;
+    }
+
+    T& GetAt(POSITION pos) { return *(T*)pos; }
+    const T& GetAt(POSITION pos) const { return *(const T*)pos; }
+    void SetAt(POSITION pos, const T& val) { *(T*)pos = val; }
+
+    POSITION FindIndex(size_t index) const {
+        if (index >= m_list.size()) return nullptr;
+        auto it = m_list.begin();
+        std::advance(it, index);
+        return (POSITION)&(*it);
+    }
+
+    POSITION Find(const T& val, POSITION startAfter = nullptr) const {
+        auto it = m_list.begin();
+        if (startAfter) {
+            it = PosToIter(startAfter);
+            if (it != m_list.end()) ++it;
+        }
+        for (; it != m_list.end(); ++it) {
+            if (*it == val) return (POSITION)&(*it);
+        }
+        return nullptr;
+    }
+
+    void MoveToTail(POSITION pos) {
+        auto it = const_cast<CAtlList*>(this)->PosToIter(pos);
+        if (it != m_list.end()) {
+            T val = std::move(*it);
+            m_list.erase(it);
+            m_list.push_back(std::move(val));
+        }
+    }
+
+    POSITION InsertBefore(POSITION pos, const T& val) {
+        auto it = PosToIter(pos);
+        auto newit = m_list.insert(it, val);
+        return IterToPos(newit);
+    }
+
+    POSITION InsertAfter(POSITION pos, const T& val) {
+        auto it = PosToIter(pos);
+        if (it != m_list.end()) ++it;
+        auto newit = m_list.insert(it, val);
+        return IterToPos(newit);
+    }
+
     auto begin() { return m_list.begin(); }
     auto end() { return m_list.end(); }
     auto begin() const { return m_list.begin(); }
     auto end() const { return m_list.end(); }
-
-private:
-    std::vector<Position> m_positions;
 };
 
-template<typename K, typename V>
+// CStringElementTraits - no-op on non-Windows, just a tag for CAtlMap compatibility
+template<typename T>
+class CStringElementTraits {};
+
+template<typename K, typename V, typename Traits = void>
 class CAtlMap {
     std::map<K, V> m_map;
+
+    // Internal pair storage for iteration
+    struct IterState {
+        typename std::map<K, V>::iterator it;
+        const void* map_ptr;
+        IterState() : map_ptr(nullptr) {}
+    };
+
 public:
+    struct CPair {
+        K m_key;
+        V m_value;
+    };
+
     size_t GetCount() const { return m_map.size(); }
     bool IsEmpty() const { return m_map.empty(); }
     void RemoveAll() { m_map.clear(); }
@@ -494,8 +678,77 @@ public:
         return false;
     }
 
+    // MFC-style Lookup returning CPair* (returns null if not found)
+    CPair* Lookup(const K& key) {
+        auto it = m_map.find(key);
+        if (it == m_map.end()) return nullptr;
+        // Store in thread-local to return stable pointer
+        static thread_local CPair s_pair;
+        s_pair.m_key = it->first;
+        s_pair.m_value = it->second;
+        return &s_pair;
+    }
+
     void SetAt(const K& key, const V& val) { m_map[key] = val; }
     bool RemoveKey(const K& key) { return m_map.erase(key) > 0; }
+
+    // MFC-style iteration using POSITION
+    // We encode position as (index + 1) cast to void*
+    POSITION GetStartPosition() const {
+        if (m_map.empty()) return nullptr;
+        return (POSITION)(uintptr_t)1;
+    }
+
+    const CPair* GetNext(POSITION& pos) const {
+        if (!pos) return nullptr;
+        uintptr_t idx = (uintptr_t)pos - 1;
+        auto it = m_map.begin();
+        std::advance(it, idx);
+        static thread_local CPair s_pair;
+        s_pair.m_key = it->first;
+        s_pair.m_value = it->second;
+        ++idx;
+        pos = (idx < m_map.size()) ? (POSITION)(uintptr_t)(idx + 1) : nullptr;
+        return &s_pair;
+    }
+
+    V& GetNextValue(POSITION& pos) {
+        uintptr_t idx = (uintptr_t)pos - 1;
+        auto it = m_map.begin();
+        std::advance(it, idx);
+        V& val = it->second;
+        ++idx;
+        pos = (idx < m_map.size()) ? (POSITION)(uintptr_t)(idx + 1) : nullptr;
+        return val;
+    }
+
+    const K& GetNextKey(POSITION& pos) const {
+        uintptr_t idx = (uintptr_t)pos - 1;
+        auto it = m_map.begin();
+        std::advance(it, idx);
+        const K& key = it->first;
+        ++idx;
+        pos = (idx < m_map.size()) ? (POSITION)(uintptr_t)(idx + 1) : nullptr;
+        return key;
+    }
+
+    void GetNextAssoc(POSITION& pos, K& key, V& val) const {
+        if (!pos) return;
+        uintptr_t idx = (uintptr_t)pos - 1;
+        auto it = m_map.begin();
+        std::advance(it, idx);
+        key = it->first;
+        val = it->second;
+        ++idx;
+        pos = (idx < m_map.size()) ? (POSITION)(uintptr_t)(idx + 1) : nullptr;
+    }
+
+    void RemoveAtPos(POSITION pos) {
+        uintptr_t idx = (uintptr_t)pos - 1;
+        auto it = m_map.begin();
+        std::advance(it, idx);
+        m_map.erase(it);
+    }
 };
 
 // ============================================================
@@ -525,18 +778,115 @@ public:
     operator T*() const { return m_ptr; }
     operator bool() const { return m_ptr != nullptr; }
 
-    CAutoPtr(const CAutoPtr&) = delete;
-    CAutoPtr& operator=(const CAutoPtr&) = delete;
+    // MFC CAutoPtr allows copy (transfers ownership)
+    CAutoPtr(CAutoPtr& other) : m_ptr(other.m_ptr) { other.m_ptr = nullptr; }
+    CAutoPtr& operator=(CAutoPtr& other) {
+        if (this != &other) { delete m_ptr; m_ptr = other.m_ptr; other.m_ptr = nullptr; }
+        return *this;
+    }
+};
+
+template<typename T>
+class CAutoVectorPtr {
+public:
+    T* m_p;
+    CAutoVectorPtr() : m_p(nullptr) {}
+    ~CAutoVectorPtr() { delete[] m_p; }
+    bool Allocate(size_t count) { delete[] m_p; m_p = new(std::nothrow) T[count](); return m_p != nullptr; }
+    void Attach(T* p) { delete[] m_p; m_p = p; }
+    T* Detach() { T* p = m_p; m_p = nullptr; return p; }
+    operator T*() { return m_p; }
+    operator const T*() const { return m_p; }
+    CAutoVectorPtr(const CAutoVectorPtr&) = delete;
+    CAutoVectorPtr& operator=(const CAutoVectorPtr&) = delete;
 };
 
 template<typename T>
 class CAutoPtrList {
     std::list<CAutoPtr<T>> m_list;
+
+    typename std::list<CAutoPtr<T>>::iterator PosToIter(POSITION pos) {
+        for (auto it = m_list.begin(); it != m_list.end(); ++it) {
+            if ((POSITION)&(*it) == pos) return it;
+        }
+        return m_list.end();
+    }
+    typename std::list<CAutoPtr<T>>::const_iterator PosToIter(POSITION pos) const {
+        for (auto it = m_list.begin(); it != m_list.end(); ++it) {
+            if ((POSITION)&(*it) == pos) return it;
+        }
+        return m_list.end();
+    }
 public:
     size_t GetCount() const { return m_list.size(); }
     bool IsEmpty() const { return m_list.empty(); }
     void RemoveAll() { m_list.clear(); }
     void AddTail(CAutoPtr<T>& p) { m_list.push_back(std::move(p)); }
+    void AddHead(CAutoPtr<T>& p) { m_list.push_front(std::move(p)); }
+
+    POSITION GetHeadPosition() const {
+        if (m_list.empty()) return nullptr;
+        return (POSITION)&m_list.front();
+    }
+    POSITION GetTailPosition() const {
+        if (m_list.empty()) return nullptr;
+        return (POSITION)&m_list.back();
+    }
+
+    CAutoPtr<T>& GetNext(POSITION& pos) {
+        CAutoPtr<T>& val = *(CAutoPtr<T>*)pos;
+        auto it = PosToIter(pos);
+        ++it;
+        pos = (it == m_list.end()) ? nullptr : (POSITION)&(*it);
+        return val;
+    }
+    const CAutoPtr<T>& GetNext(POSITION& pos) const {
+        const CAutoPtr<T>& val = *(const CAutoPtr<T>*)pos;
+        auto it = PosToIter(pos);
+        ++it;
+        pos = (it == m_list.end()) ? nullptr : (POSITION)&(*it);
+        return val;
+    }
+
+    CAutoPtr<T>& GetPrev(POSITION& pos) {
+        CAutoPtr<T>& val = *(CAutoPtr<T>*)pos;
+        auto it = PosToIter(pos);
+        if (it == m_list.begin()) pos = nullptr;
+        else { --it; pos = (POSITION)&(*it); }
+        return val;
+    }
+
+    CAutoPtr<T>& GetAt(POSITION pos) { return *(CAutoPtr<T>*)pos; }
+    const CAutoPtr<T>& GetAt(POSITION pos) const { return *(const CAutoPtr<T>*)pos; }
+
+    POSITION InsertBefore(POSITION pos, CAutoPtr<T>& val) {
+        auto it = PosToIter(pos);
+        auto newit = m_list.insert(it, std::move(val));
+        return (POSITION)&(*newit);
+    }
+
+    T* GetHead() { return m_list.empty() ? nullptr : m_list.front().operator->(); }
+    T* GetTail() { return m_list.empty() ? nullptr : m_list.back().operator->(); }
+
+    CAutoPtr<T> RemoveHead() {
+        CAutoPtr<T> val = std::move(m_list.front());
+        m_list.pop_front();
+        return val;
+    }
+    CAutoPtr<T> RemoveTail() {
+        CAutoPtr<T> val = std::move(m_list.back());
+        m_list.pop_back();
+        return val;
+    }
+
+    void RemoveHeadNoReturn() {
+        if (!m_list.empty()) m_list.pop_front();
+    }
+
+    void RemoveAt(POSITION pos) {
+        auto it = PosToIter(pos);
+        if (it != m_list.end()) m_list.erase(it);
+    }
 
     auto begin() { return m_list.begin(); }
     auto end() { return m_list.end(); }
@@ -591,9 +941,7 @@ public:
     CComQIPtr() {}
     CComQIPtr(T* p) : CComPtr<T>(p) {}
     template<typename U>
-    CComQIPtr(U* p) {
-        if (p) p->QueryInterface(__uuidof(T), (void**)&(*this));
-    }
+    CComQIPtr(U* p) : CComPtr<T>(static_cast<T*>(p)) {}
 };
 
 // ============================================================
@@ -659,6 +1007,120 @@ inline bool CFileGetStatus(const wchar_t* fn, CFileStatus& fs) {
 }
 
 // ============================================================
+// CFile / CStdioFile - MFC file replacement using FILE*
+// ============================================================
+
+class CFile {
+public:
+    enum OpenFlags {
+        modeRead      = 0x0001,
+        modeWrite     = 0x0002,
+        modeCreate    = 0x1000,
+        typeBinary    = 0x2000,
+        typeText      = 0x4000,
+        shareDenyNone = 0x0040,
+        shareDenyWrite = 0x0020,
+    };
+    enum SeekPosition { begin = 0, current = 1, end = 2 };
+
+    CString m_strFileName;
+
+    CFile() : m_pFile(nullptr) {}
+    virtual ~CFile() { Close(); }
+
+    virtual bool Open(LPCTSTR lpszFileName, UINT nOpenFlags) {
+        Close();
+        m_strFileName = lpszFileName;
+
+        const wchar_t* mode = L"rb";
+        if ((nOpenFlags & modeCreate) && (nOpenFlags & modeWrite)) {
+            mode = (nOpenFlags & typeBinary) ? L"wb" : L"w";
+        } else if (nOpenFlags & modeWrite) {
+            mode = (nOpenFlags & typeBinary) ? L"r+b" : L"r+";
+        } else if (nOpenFlags & modeRead) {
+            if (nOpenFlags & typeBinary) mode = L"rb";
+            else mode = L"r";
+        }
+
+        // Convert wchar_t filename to char for fopen
+        const wchar_t* wfn = (const wchar_t*)m_strFileName;
+        std::string fn8;
+        while (*wfn) { fn8 += (char)(*wfn & 0x7F); wfn++; }
+        m_pFile = fopen(fn8.c_str(), fn8.c_str() ? (const char*)CStringA(CStringW(mode)) : "rb");
+        return m_pFile != nullptr;
+    }
+
+    virtual void Close() {
+        if (m_pFile) { fclose(m_pFile); m_pFile = nullptr; }
+    }
+
+    UINT Read(void* buf, UINT count) {
+        if (!m_pFile) return 0;
+        return (UINT)fread(buf, 1, count, m_pFile);
+    }
+
+    void Write(const void* buf, UINT count) {
+        if (m_pFile) fwrite(buf, 1, count, m_pFile);
+    }
+
+    ULONGLONG GetPosition() const {
+        if (!m_pFile) return 0;
+        return (ULONGLONG)ftell(m_pFile);
+    }
+
+    ULONGLONG GetLength() const {
+        if (!m_pFile) return 0;
+        long cur = ftell(m_pFile);
+        fseek(m_pFile, 0, SEEK_END);
+        long len = ftell(m_pFile);
+        fseek(m_pFile, cur, SEEK_SET);
+        return (ULONGLONG)len;
+    }
+
+    ULONGLONG Seek(LONGLONG lOff, UINT nFrom) {
+        if (!m_pFile) return 0;
+        int origin = SEEK_SET;
+        if (nFrom == current) origin = SEEK_CUR;
+        else if (nFrom == end) origin = SEEK_END;
+        fseek(m_pFile, (long)lOff, origin);
+        return (ULONGLONG)ftell(m_pFile);
+    }
+
+    CString GetFilePath() const { return m_strFileName; }
+
+protected:
+    FILE* m_pFile;
+};
+
+class CStdioFile : public CFile {
+public:
+    using CFile::CFile;
+
+    BOOL ReadString(CString& str) {
+        if (!m_pFile) return FALSE;
+        str.Empty();
+        char buf[4096];
+        if (!fgets(buf, sizeof(buf), m_pFile)) return FALSE;
+        // Remove trailing newline
+        size_t len = strlen(buf);
+        if (len > 0 && buf[len-1] == '\n') buf[--len] = '\0';
+        if (len > 0 && buf[len-1] == '\r') buf[--len] = '\0';
+        str = CString(buf);
+        return TRUE;
+    }
+
+    void WriteString(LPCTSTR lpsz) {
+        if (!m_pFile) return;
+        CStringA a((const wchar_t*)CString(lpsz));
+        fputs((const char*)a, m_pFile);
+    }
+
+    void Flush() {
+        if (m_pFile) fflush(m_pFile);
+    }
+};
+
+// ============================================================
 // COM interface macros (replacing DirectShow / ATL)
 // ============================================================
 
@@ -674,7 +1136,7 @@ inline bool CFileGetStatus(const wchar_t* fn, CFileStatus& fs) {
 #define uuid(x)
 
 // interface keyword
-#define interface class
+#define interface struct
 
 // CUnknown - base class for COM objects (simplified)
 class CUnknown : public IUnknown {
@@ -719,26 +1181,15 @@ public:
 };
 
 // DECLARE_IUNKNOWN macro
+// Use NonDelegatingQueryInterface for QI, simple ref counting for AddRef/Release.
+// Avoids ambiguous CUnknown:: base in diamond inheritance.
 #define DECLARE_IUNKNOWN \
-    HRESULT QueryInterface(REFIID riid, void** ppv) override { return CUnknown::QueryInterface(riid, ppv); } \
-    ULONG AddRef() override { return CUnknown::AddRef(); } \
-    ULONG Release() override { return CUnknown::Release(); }
+    HRESULT QueryInterface(REFIID riid, void** ppv) override { return NonDelegatingQueryInterface(riid, ppv); } \
+    ULONG AddRef() override { return 1; } \
+    ULONG Release() override { return 1; }
 
-// Media type enums used in SubPicDesc
-enum {
-    MSP_RGB32 = 0,
-    MSP_RGB24,
-    MSP_RGB16,
-    MSP_RGB15,
-    MSP_YUY2,
-    MSP_YV12,
-    MSP_IYUV,
-    MSP_AYUV,
-    MSP_RGBA,
-};
-
-// POSITION type (MFC list iteration)
-typedef void* POSITION;
+// Media type enums - defined in MemSubPic.h, not here
+// to avoid conflicts
 
 // WCHAR, LCID
 typedef wchar_t WCHAR;
@@ -784,6 +1235,14 @@ public:
     auto begin() const { return m_list.begin(); }
     auto end() const { return m_list.end(); }
 };
+
+// GetInterface (DirectShow helper)
+inline HRESULT GetInterface(IUnknown* pUnk, void** ppv) {
+    if (!ppv) return E_POINTER;
+    *ppv = pUnk;
+    pUnk->AddRef();
+    return S_OK;
+}
 
 // __uuidof replacement (returns an empty GUID)
 template<typename T>
@@ -849,6 +1308,12 @@ typedef struct tagGLYPHMETRICS {
     short gmCellIncX;
     short gmCellIncY;
 } GLYPHMETRICS;
+
+// GDI path types
+#define PT_CLOSEFIGURE  0x01
+#define PT_LINETO       0x02
+#define PT_BEZIERTO     0x04
+#define PT_MOVETO       0x06
 
 // TT_POLYGON types
 #define TT_PRIM_LINE        1

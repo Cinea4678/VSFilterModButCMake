@@ -7,10 +7,14 @@ add_library(vsfiltermod_plugin SHARED
 )
 
 target_include_directories(vsfiltermod_plugin PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/vapoursynth/sdk/include/vapoursynth
 )
+if(WIN32)
+    target_include_directories(vsfiltermod_plugin PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+    )
+endif()
 
 target_link_libraries(vsfiltermod_plugin PRIVATE
     subtitles
