@@ -21,8 +21,12 @@
 
 #pragma once
 
+#ifdef _WIN32
 #include <atlbase.h>
 #include <atlcoll.h>
+#else
+#include "compat/compat.h"
+#endif
 #include "CoordGeom.h"
 
 #pragma pack(push, 1)
@@ -313,6 +317,7 @@ public:
 */
 };
 
+#ifdef _WIN32
 class CSubPicQueue : public ISubPicQueueImpl, private CAMThread
 {
 	int m_nMaxSubPic;
@@ -351,6 +356,7 @@ public:
 	STDMETHODIMP GetStats(int& nSubPics, REFERENCE_TIME& rtNow, REFERENCE_TIME& rtStart, REFERENCE_TIME& rtStop);
 	STDMETHODIMP GetStats(int nSubPic, REFERENCE_TIME& rtStart, REFERENCE_TIME& rtStop);
 };
+#endif // _WIN32
 
 class CSubPicQueueNoThread : public ISubPicQueueImpl
 {
@@ -370,6 +376,7 @@ public:
 	STDMETHODIMP GetStats(int nSubPic, REFERENCE_TIME& rtStart, REFERENCE_TIME& rtStop);
 };
 
+#ifdef _WIN32
 //
 // ISubPicAllocatorPresenter
 //
@@ -477,6 +484,8 @@ public:
 // ISubStream
 //
 
+#endif // _WIN32 (ISubPicAllocatorPresenter)
+
 [uuid("DE11E2FB-02D3-45e4-A174-6B7CE2783BDB")]
 interface ISubStream : public IPersist
 {
@@ -486,7 +495,7 @@ interface ISubStream : public IPersist
 	STDMETHOD (SetStream) (int iStream) PURE;
 	STDMETHOD (Reload) () PURE;
 
-	// TODO: get rid of IPersist to identify type and use only 
+	// TODO: get rid of IPersist to identify type and use only
 	// interface functions to modify the settings of the substream
 };
 

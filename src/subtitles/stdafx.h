@@ -25,6 +25,9 @@
 //
 
 #pragma once
+
+#ifdef _WIN32
+
 #include "..\DSUtil\SharedInclude.h"
 
 #define WIN32_LEAN_AND_MEAN		// Exclude rarely-used stuff from Windows headers
@@ -42,3 +45,22 @@
 
 #include <streams.h>
 #include "..\DSUtil\DSUtil.h"
+
+#else // !_WIN32
+
+#include "../compat/compat.h"
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <cmath>
+#include <algorithm>
+#include <string>
+#include <vector>
+#include <list>
+#include <map>
+#include <memory>
+
+// DNew macro (no-op on non-Windows)
+#define DNew new
+
+#endif // _WIN32
