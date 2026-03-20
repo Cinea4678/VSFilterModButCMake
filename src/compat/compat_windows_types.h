@@ -24,6 +24,7 @@ typedef int         BOOL;
 typedef unsigned char UCHAR;
 typedef float       FLOAT;
 
+typedef int64_t     __int64;
 typedef uintptr_t   DWORD_PTR;
 typedef uintptr_t   UINT_PTR;
 typedef intptr_t    INT_PTR;
@@ -205,5 +206,16 @@ typedef struct tagRECT {
 
 // MSVC-specific integer literal suffixes
 // Note: code using 10000000i64 needs to be changed to 10000000LL
+
+// memsetd - fill memory with DWORD values (from dsutil, needed cross-platform)
+inline void memsetd(void* dst, unsigned int c, int nbytes) {
+    for (int i = 0; i < nbytes / (int)sizeof(uint32_t); i++)
+        ((uint32_t*)dst)[i] = c;
+}
+
+// __forceinline for non-MSVC compilers
+#ifndef __forceinline
+#define __forceinline inline __attribute__((always_inline))
+#endif
 
 #endif // !_WIN32

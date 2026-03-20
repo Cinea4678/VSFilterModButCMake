@@ -1254,13 +1254,13 @@ STDMETHODIMP_(POSITION) CVobSubFile::GetNext(POSITION pos)
 STDMETHODIMP_(REFERENCE_TIME) CVobSubFile::GetStart(POSITION pos, double fps)
 {
     int i = (int)pos - 1;
-    return(GetFrame(i) ? 10000i64 * m_img.start : 0);
+    return(GetFrame(i) ? 10000LL * m_img.start : 0);
 }
 
 STDMETHODIMP_(REFERENCE_TIME) CVobSubFile::GetStop(POSITION pos, double fps)
 {
     int i = (int)pos - 1;
-    return(GetFrame(i) ? 10000i64 * (m_img.start + m_img.delay) : 0);
+    return(GetFrame(i) ? 10000LL * (m_img.start + m_img.delay) : 0);
 }
 
 STDMETHODIMP_(bool) CVobSubFile::IsAnimated(POSITION pos)
@@ -1604,7 +1604,7 @@ HRESULT CVobSubSettings::Render(SubPicDesc& spd, RECT& bbox)
     rts.m_dstScreenSize.SetSize(m_size.cx, m_size.cy);
     CStringW assstr;
     m_img.Polygonize(assstr, false);
-    REFERENCE_TIME rtStart = 10000i64*m_img.start, rtStop = 10000i64*(m_img.start+m_img.delay);
+    REFERENCE_TIME rtStart = 10000LL*m_img.start, rtStop = 10000LL*(m_img.start+m_img.delay);
     rts.Add(assstr, true, rtStart, rtStop);
     rts.Render(spd, (rtStart+rtStop)/2, 25, r);
     */
@@ -2375,7 +2375,7 @@ void CVobSubStream::Add(REFERENCE_TIME tStart, REFERENCE_TIME tStop, BYTE* pData
 
     CAutoPtr<SubPic> p(DNew SubPic());
     p->tStart = tStart;
-    p->tStop = vsi.delay > 0 ? (tStart + 10000i64 * vsi.delay) : tStop;
+    p->tStop = vsi.delay > 0 ? (tStart + 10000LL * vsi.delay) : tStop;
     p->pData.SetCount(len);
     memcpy(p->pData.GetData(), pData, p->pData.GetCount());
 

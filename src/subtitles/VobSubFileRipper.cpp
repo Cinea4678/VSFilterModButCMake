@@ -579,7 +579,7 @@ bool CVobSubFileRipper::Create()
 			if(!selvcmap.Lookup(vc))
 				continue;
 
-			vcchunk c = {2048i64*angle[i].start, 2048i64*angle[i].end+2048, vc};
+			vcchunk c = {2048LL*angle[i].start, 2048LL*angle[i].end+2048, vc};
 			chunks.Add(c);
 
 			Log(LOG_INFO, _T("Adding: 0x%x - 0x%x (lba) for vob %d cell %d"), 
@@ -606,7 +606,7 @@ bool CVobSubFileRipper::Create()
 		Log(LOG_INFO, _T("Indexing mode: File"));
 
 		chunks.RemoveAll();
-		vcchunk c = {0, 2048i64*m_vob.GetLength(), 0};
+		vcchunk c = {0, 2048LL*m_vob.GetLength(), 0};
 		chunks.Add(c);
 	}
 

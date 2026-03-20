@@ -538,7 +538,7 @@ bool Rasterizer::ScanConvert()
                 x2 = (x >> 1);
 
                 if(x2 > x1)
-                    mOutline.push_back(std::pair<__int64, __int64>((y << 32) + x1 + 0x4000000040000000i64, (y << 32) + x2 + 0x4000000040000000i64)); // G: damn Avery, this is evil! :)
+                    mOutline.push_back(std::pair<__int64, __int64>((y << 32) + x1 + 0x4000000040000000LL, (y << 32) + x2 + 0x4000000040000000LL)); // G: damn Avery, this is evil! :)
             }
         }
 
@@ -885,8 +885,12 @@ static __forceinline void pixmix2(DWORD *dst, DWORD color, DWORD shapealpha, DWO
            | ((((*dst >> 8) & 0x00ff0000) * ia) & 0xff000000);
 }
 
+#if defined(__aarch64__)
+#include "sse2neon.h"
+#else
 #include <xmmintrin.h>
 #include <emmintrin.h>
+#endif
 
 static __forceinline void pixmix_sse2(DWORD* dst, DWORD color, DWORD alpha)
 {
@@ -954,9 +958,11 @@ static __forceinline DWORD safe_subtract(DWORD a, DWORD b)
 }
 
 // For CPUID usage in Rasterizer::Draw
+#ifdef _WIN32
 #include "../dsutil/vd.h"
+#endif
 
-static const __int64 _00ff00ff00ff00ff = 0x00ff00ff00ff00ffi64;
+static const int64_t _00ff00ff00ff00ff = 0x00ff00ff00ff00ffLL;
 
 // some helper procedures (Draw is so big)
 void Rasterizer::Draw_noAlpha_spFF_Body_0(RasterizerNfo& rnfo)
@@ -1804,7 +1810,11 @@ CRect Rasterizer::Draw(SubPicDesc& spd, CRect& clipRect, byte* pAlphaMask, int x
     bbox &= CRect(0, 0, spd.w, spd.h);
 
     // CPUID from VDub
+    #ifdef _WIN32
     bool fSSE2 = !!(g_cpuid.m_flags & CCpuID::sse2);
+#else
+    bool fSSE2 = true; // Always available via sse2neon or native
+#endif
 
 #ifdef _VSMOD // patch m006. moveable vector clip
     mod_vc.hfull = h;
@@ -2117,7 +2127,11 @@ CRect Rasterizer::Draw(SubPicDesc& spd, CRect& clipRect, byte* pAlphaMask, int x
 #if 0
 void Rasterizer::FillSolidRect(SubPicDesc& spd, int x, int y, int nWidth, int nHeight, DWORD lColor)
 {
+    #ifdef _WIN32
     bool fSSE2 = !!(g_cpuid.m_flags & CCpuID::sse2);
+#else
+    bool fSSE2 = true; // Always available via sse2neon or native
+#endif
 
     // Warning : lColor is AARRGGBB (same format as DirectX D3DCOLOR_ARGB)
     for(int wy = y; wy < y + nHeight; wy++)
@@ -2130,7 +2144,11 @@ void Rasterizer::FillSolidRect(SubPicDesc& spd, int x, int y, int nWidth, int nH
 #else
 void Rasterizer::FillSolidRect(SubPicDesc& spd, int x, int y, int nWidth, int nHeight, DWORD lColor)
 {
+    #ifdef _WIN32
     bool fSSE2 = !!(g_cpuid.m_flags & CCpuID::sse2);
+#else
+    bool fSSE2 = true; // Always available via sse2neon or native
+#endif
 
     for(int wy = y; wy < y + nHeight; wy++)
     {

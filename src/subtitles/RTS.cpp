@@ -3352,12 +3352,12 @@ STDMETHODIMP_(POSITION) CRenderedTextSubtitle::GetNext(POSITION pos)
 
 STDMETHODIMP_(REFERENCE_TIME) CRenderedTextSubtitle::GetStart(POSITION pos, double fps)
 {
-    return(10000i64 * TranslateSegmentStart((int)pos - 1, fps));
+    return(10000LL * TranslateSegmentStart((int)pos - 1, fps));
 }
 
 STDMETHODIMP_(REFERENCE_TIME) CRenderedTextSubtitle::GetStop(POSITION pos, double fps)
 {
-    return(10000i64 * TranslateSegmentEnd((int)pos - 1, fps));
+    return(10000LL * TranslateSegmentEnd((int)pos - 1, fps));
 }
 
 STDMETHODIMP_(bool) CRenderedTextSubtitle::IsAnimated(POSITION pos)

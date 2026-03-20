@@ -322,8 +322,8 @@ bool Rasterizer::ScanConvert(GlyphPath& path, const CRect& bbox)
                 if(x2 > x1)
                 {
                     Span s(x1, y, x2, y);
-                    s.first += 0x4000000040000000i64;
-                    s.second += 0x4000000040000000i64;
+                    s.first += 0x4000000040000000LL;
+                    s.second += 0x4000000040000000LL;
                     mOutline.Add(s);
                 }
             }

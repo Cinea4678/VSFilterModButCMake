@@ -55,12 +55,28 @@ if(NOT WIN32)
     pkg_check_modules(FONTCONFIG REQUIRED fontconfig)
 endif()
 
+# On ARM64 (Apple Silicon), fetch sse2neon for SSE2→NEON translation
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+    include(FetchContent)
+    FetchContent_Declare(
+        sse2neon
+        GIT_REPOSITORY https://github.com/DLTcollab/sse2neon.git
+        GIT_TAG        v1.7.0
+    )
+    FetchContent_MakeAvailable(sse2neon)
+    # Make sse2neon.h available globally
+    include_directories(${sse2neon_SOURCE_DIR})
+endif()
+
 # Build libraries
 add_subdirectory(src/zlib)
 add_subdirectory(src/libpng)
 add_subdirectory(src/subtitles)
 add_subdirectory(src/subpic)
 add_subdirectory(src/platform)
+
+# Cross-platform VapourSynth/AviSynth plugin
+add_subdirectory(src/plugins)
 
 if(VSFILTERMOD_BUILD_DIRECTSHOW)
     add_subdirectory(src/BaseClasses)

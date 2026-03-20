@@ -221,7 +221,7 @@ STDMETHODIMP CMemSubPic::ClearDirtyRect(DWORD color)
 //
 
         int w = m_rcDirty.Width();
-#ifdef _WIN64
+#if defined(_WIN64) || !defined(_WIN32)
         memsetd(p, color, w * 4); // nya
 #else
         __asm
@@ -358,6 +358,12 @@ STDMETHODIMP CMemSubPic::Unlock(RECT* pDirtyRect)
 // For CPUID usage
 #include "../dsutil/vd.h"
 #include <emmintrin.h>
+#elif defined(__aarch64__)
+#include "sse2neon.h"
+#define _WIN64_OR_AARCH64 1
+#elif defined(__SSE2__)
+#include <emmintrin.h>
+#define _WIN64_OR_AARCH64 1
 #endif
 STDMETHODIMP CMemSubPic::AlphaBlt(RECT* pSrc, RECT* pDst, SubPicDesc* pTarget)
 {
@@ -491,15 +497,17 @@ STDMETHODIMP CMemSubPic::AlphaBlt(RECT* pSrc, RECT* pDst, SubPicDesc* pTarget)
         else if(dst.type == MSP_YUY2)
         {
             unsigned int ia, c;
-#ifdef _WIN64
+#if defined(_WIN64)
             // CPUID from VDub
             bool fSSE2 = !!(g_cpuid.m_flags & CCpuID::sse2);
+#elif !defined(_WIN32)
+            bool fSSE2 = true; // sse2neon or native SSE2
 #endif
             DWORD* d2 = (DWORD*)d;
 
             BYTE* s2 = s;
             BYTE* s2end = s2 + w * 4;
-            static const __int64 _8181 = 0x0080001000800010i64;
+            static const int64_t _8181 = 0x0080001000800010LL;
 
             for(; s2 < s2end; s2 += 8, d2++)
             {
@@ -507,7 +515,7 @@ STDMETHODIMP CMemSubPic::AlphaBlt(RECT* pSrc, RECT* pDst, SubPicDesc* pTarget)
                 if(ia < 0xff)
                 {
                     c = (s2[4] << 24) | (s2[5] << 16) | (s2[0] << 8) | s2[1]; // (v<<24)|(y2<<16)|(u<<8)|y1;
-#ifdef _WIN64
+#if defined(_WIN64) || !defined(_WIN32)
                     if(fSSE2)
                     {
                         ia = (ia << 24) | (s2[7] << 16) | (ia << 8) | s2[3];
@@ -648,7 +656,7 @@ STDMETHODIMP CMemSubPic::AlphaBlt(RECT* pSrc, RECT* pDst, SubPicDesc* pTarget)
     }
 
 
-#ifndef _WIN64
+#if defined(_WIN32) && !defined(_WIN64)
     __asm emms;
 #endif
 

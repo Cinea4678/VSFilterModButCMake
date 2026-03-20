@@ -10,6 +10,8 @@ jobs:
         arch: [Win32, x64]
     steps:
     - uses: actions/checkout@v4
+      with:
+        submodules: recursive
     - name: Configure CMake
       run: cmake -B build -G "Visual Studio 16 2019" -A ${{ matrix.arch }} -DCMAKE_BUILD_TYPE=Release
     - name: Build
@@ -19,8 +21,32 @@ jobs:
       run: |
         mkdir dist
         copy build\src\vsfilter\Release\VSFilterMod.dll dist\VSFilterMod.dll
+        copy build\src\plugins\Release\vsfiltermod.dll dist\vsfiltermod_plugin.dll
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: VSFilterMod_${{ matrix.arch }}
+        path: dist
+
+  build-macos:
+    runs-on: macos-14
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Install dependencies
+      run: |
+        brew install freetype harfbuzz fontconfig pkg-config vapoursynth
+    - name: Configure CMake
+      run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+    - name: Build
+      run: cmake --build build --config Release
+    - name: Prepare artifacts
+      run: |
+        mkdir -p dist
+        cp build/src/plugins/vsfiltermod.dylib dist/
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: VSFilterMod_macOS_arm64
         path: dist

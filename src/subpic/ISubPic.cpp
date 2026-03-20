@@ -714,7 +714,7 @@ DWORD CSubPicQueue::ThreadProc()
                     if(m_rtNow >= rtStop) continue;
                 }
 
-                if(rtStart >= m_rtNow + 60 * 10000000i64) // we are already one minute ahead, this should be enough
+                if(rtStart >= m_rtNow + 60 * 10000000LL) // we are already one minute ahead, this should be enough
                     break;
 
                 if(rtNow < rtStop)
@@ -1097,7 +1097,7 @@ STDMETHODIMP_(void) ISubPicAllocatorPresenterImpl::SetTime(REFERENCE_TIME rtNow)
 
 STDMETHODIMP_(void) ISubPicAllocatorPresenterImpl::SetSubtitleDelay(int delay_ms)
 {
-    m_rtSubtitleDelay = delay_ms * 10000i64;
+    m_rtSubtitleDelay = delay_ms * 10000LL;
 }
 
 STDMETHODIMP_(int) ISubPicAllocatorPresenterImpl::GetSubtitleDelay()
