@@ -361,7 +361,6 @@ bool Subtitle::MixValue(Definition& def, T& value, float t)
     return MixValue(def, value, t, &n2n);
 }
 
-template<>
 bool Subtitle::MixValue(Definition& def, float& value, float t)
 {
     StringMapW<float> n2n;
@@ -394,7 +393,6 @@ bool Subtitle::MixValue(Definition& def, T& value, float t, StringMapW<T>* n2n)
     return true;
 }
 
-template<>
 bool Subtitle::MixValue(Definition& def, float& value, float t, StringMapW<float>* n2n)
 {
     if(!def.IsValue()) return false;
@@ -416,7 +414,6 @@ bool Subtitle::MixValue(Definition& def, float& value, float t, StringMapW<float
     return true;
 }
 
-template<>
 bool Subtitle::MixValue(Definition& def, Path& src, float t)
 {
     if(!def.IsValue(Definition::string)) return false;
