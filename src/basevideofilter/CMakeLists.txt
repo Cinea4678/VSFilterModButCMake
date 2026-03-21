@@ -13,6 +13,6 @@ target_compile_definitions(basevideofilter PRIVATE
 # MFC support
 if(MSVC)
     target_compile_definitions(basevideofilter PRIVATE
-        $<$<CONFIG:Debug>:_AFXDLL>
+        _AFXDLL
     )
 endif()

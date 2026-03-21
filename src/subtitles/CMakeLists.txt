@@ -37,7 +37,7 @@ target_compile_definitions(libssf PRIVATE
 
 if(MSVC)
     target_compile_definitions(libssf PRIVATE
-        $<$<CONFIG:Debug>:_AFXDLL>
+        _AFXDLL
     )
 endif()
 
@@ -88,7 +88,7 @@ target_compile_definitions(subtitles PRIVATE
 
 if(MSVC)
     target_compile_definitions(subtitles PRIVATE
-        $<$<CONFIG:Debug>:_AFXDLL>
+        _AFXDLL
     )
 endif()
 

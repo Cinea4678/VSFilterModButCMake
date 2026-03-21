@@ -24,6 +24,6 @@ target_compile_definitions(subpic PRIVATE
 
 if(MSVC)
     target_compile_definitions(subpic PRIVATE
-        $<$<CONFIG:Debug>:_AFXDLL>
+        _AFXDLL
     )
 endif()

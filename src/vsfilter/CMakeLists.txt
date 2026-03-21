@@ -42,7 +42,7 @@ target_compile_definitions(VSFilterMod PRIVATE
 
 if(MSVC)
     target_compile_definitions(VSFilterMod PRIVATE
-        $<$<CONFIG:Debug>:_AFXDLL>
+        _AFXDLL
     )
 
     # Module definition file for exports

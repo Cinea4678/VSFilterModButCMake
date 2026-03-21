@@ -86,6 +86,6 @@ endif()
 # MFC support
 if(MSVC)
     target_compile_definitions(dsutil PRIVATE
-        $<$<CONFIG:Debug>:_AFXDLL>
+        _AFXDLL
     )
 endif()
