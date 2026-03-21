@@ -521,7 +521,7 @@ STDMETHODIMP CMemSubPic::AlphaBlt(RECT* pSrc, RECT* pDst, SubPicDesc* pTarget)
                         ia = (ia << 24) | (s2[7] << 16) | (ia << 8) | s2[3];
                         // SSE2
                         __m128i mm_zero = _mm_setzero_si128();
-                        __m128i mm_8181 = _mm_move_epi64(_mm_cvtsi64_si128(_8181));
+                        __m128i mm_8181 = _mm_set_epi64x(0, _8181);
                         __m128i mm_c = _mm_cvtsi32_si128(c);
                         mm_c = _mm_unpacklo_epi8(mm_c, mm_zero);
                         __m128i mm_d = _mm_cvtsi32_si128(*d2);

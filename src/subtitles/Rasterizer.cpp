@@ -949,15 +949,15 @@ static __forceinline DWORD safe_subtract_sse2(DWORD a, DWORD b)
 
 static __forceinline DWORD safe_subtract(DWORD a, DWORD b)
 {
-#ifndef _M_X64
+#if defined(_M_X64) || defined(__aarch64__) || defined(__x86_64__)
+    return safe_subtract_sse2(a, b);
+#else
     __m64 ap = _mm_cvtsi32_si64(a);
     __m64 bp = _mm_cvtsi32_si64(b);
     __m64 rp = _mm_subs_pu16(ap, bp);
     DWORD r = (DWORD)_mm_cvtsi64_si32(rp);
     _mm_empty();
     return r;
-#else
-    return safe_subtract_sse2(a, b);
 #endif
 }
 
@@ -2120,7 +2120,7 @@ CRect Rasterizer::Draw(SubPicDesc& spd, CRect& clipRect, byte* pAlphaMask, int x
     // Remember to EMMS!
     // Rendering fails in funny ways if we don't do this.
 
-#ifndef _M_X64
+#if !defined(_M_X64) && !defined(__aarch64__) && !defined(__x86_64__)
     _mm_empty();
 #endif
 
