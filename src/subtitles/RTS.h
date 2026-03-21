@@ -253,14 +253,14 @@ class CRenderedTextSubtitle : public CSimpleTextSubtitle, public ISubPicProvider
     CSubtitle* GetSubtitle(int entry);
 
 protected:
-    virtual void OnChanged();
+    void OnChanged() override;
 
 public:
     CRenderedTextSubtitle(CCritSec* pLock, STSStyle *styleOverride = NULL, bool doOverride = false);
     virtual ~CRenderedTextSubtitle();
 
-    virtual void Copy(CSimpleTextSubtitle& sts);
-    virtual void Empty();
+    void Copy(CSimpleTextSubtitle& sts) override;
+    void Empty() override;
 
     // call to signal this RTS to ignore any of the styles and apply the given override style
     void SetOverride(bool doOverride = true, STSStyle *styleOverride = NULL)
@@ -277,20 +277,20 @@ public:
     STDMETHODIMP NonDelegatingQueryInterface(REFIID riid, void** ppv);
 
     // ISubPicProvider
-    STDMETHODIMP_(POSITION) GetStartPosition(REFERENCE_TIME rt, double fps);
-    STDMETHODIMP_(POSITION) GetNext(POSITION pos);
-    STDMETHODIMP_(REFERENCE_TIME) GetStart(POSITION pos, double fps);
-    STDMETHODIMP_(REFERENCE_TIME) GetStop(POSITION pos, double fps);
-    STDMETHODIMP_(bool) IsAnimated(POSITION pos);
-    STDMETHODIMP Render(SubPicDesc& spd, REFERENCE_TIME rt, double fps, RECT& bbox);
+    STDMETHODIMP_(POSITION) GetStartPosition(REFERENCE_TIME rt, double fps) override;
+    STDMETHODIMP_(POSITION) GetNext(POSITION pos) override;
+    STDMETHODIMP_(REFERENCE_TIME) GetStart(POSITION pos, double fps) override;
+    STDMETHODIMP_(REFERENCE_TIME) GetStop(POSITION pos, double fps) override;
+    STDMETHODIMP_(bool) IsAnimated(POSITION pos) override;
+    STDMETHODIMP Render(SubPicDesc& spd, REFERENCE_TIME rt, double fps, RECT& bbox) override;
 
     // IPersist
-    STDMETHODIMP GetClassID(CLSID* pClassID);
+    STDMETHODIMP GetClassID(CLSID* pClassID) override;
 
     // ISubStream
-    STDMETHODIMP_(int) GetStreamCount();
-    STDMETHODIMP GetStreamInfo(int i, WCHAR** ppName, LCID* pLCID);
-    STDMETHODIMP_(int) GetStream();
-    STDMETHODIMP SetStream(int iStream);
-    STDMETHODIMP Reload();
+    STDMETHODIMP_(int) GetStreamCount() override;
+    STDMETHODIMP GetStreamInfo(int i, WCHAR** ppName, LCID* pLCID) override;
+    STDMETHODIMP_(int) GetStream() override;
+    STDMETHODIMP SetStream(int iStream) override;
+    STDMETHODIMP Reload() override;
 };

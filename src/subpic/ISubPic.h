@@ -137,33 +137,33 @@ public:
 
 	// ISubPic
 
-	STDMETHODIMP_(REFERENCE_TIME) GetStart();
-	STDMETHODIMP_(REFERENCE_TIME) GetStop();
-	STDMETHODIMP_(void) SetStart(REFERENCE_TIME rtStart);
-	STDMETHODIMP_(void) SetStop(REFERENCE_TIME rtStop);
+	STDMETHODIMP_(REFERENCE_TIME) GetStart() override;
+	STDMETHODIMP_(REFERENCE_TIME) GetStop() override;
+	STDMETHODIMP_(void) SetStart(REFERENCE_TIME rtStart) override;
+	STDMETHODIMP_(void) SetStop(REFERENCE_TIME rtStop) override;
 
-	STDMETHODIMP GetDesc(SubPicDesc& spd) = 0;
-	STDMETHODIMP CopyTo(ISubPic* pSubPic);
+	STDMETHODIMP GetDesc(SubPicDesc& spd) override = 0;
+	STDMETHODIMP CopyTo(ISubPic* pSubPic) override;
 
-	STDMETHODIMP ClearDirtyRect(DWORD color) = 0;
-	STDMETHODIMP GetDirtyRect(RECT* pDirtyRect);
-	STDMETHODIMP SetDirtyRect(RECT* pDirtyRect);
+	STDMETHODIMP ClearDirtyRect(DWORD color) override = 0;
+	STDMETHODIMP GetDirtyRect(RECT* pDirtyRect) override;
+	STDMETHODIMP SetDirtyRect(RECT* pDirtyRect) override;
 
-	STDMETHODIMP GetMaxSize(SIZE* pMaxSize);
-	STDMETHODIMP SetSize(SIZE size, RECT vidrect);
+	STDMETHODIMP GetMaxSize(SIZE* pMaxSize) override;
+	STDMETHODIMP SetSize(SIZE size, RECT vidrect) override;
 
-	STDMETHODIMP Lock(SubPicDesc& spd) = 0;
-	STDMETHODIMP Unlock(RECT* pDirtyRect) = 0;
+	STDMETHODIMP Lock(SubPicDesc& spd) override = 0;
+	STDMETHODIMP Unlock(RECT* pDirtyRect) override = 0;
 
-	STDMETHODIMP AlphaBlt(RECT* pSrc, RECT* pDst, SubPicDesc* pTarget) = 0;
+	STDMETHODIMP AlphaBlt(RECT* pSrc, RECT* pDst, SubPicDesc* pTarget) override = 0;
 
-	STDMETHODIMP SetVirtualTextureSize (const SIZE pSize, const POINT pTopLeft);
-	STDMETHODIMP GetSourceAndDest(SIZE* pSize, RECT* pRcSource, RECT* pRcDest);
+	STDMETHODIMP SetVirtualTextureSize (const SIZE pSize, const POINT pTopLeft) override;
+	STDMETHODIMP GetSourceAndDest(SIZE* pSize, RECT* pRcSource, RECT* pRcDest) override;
 
-	STDMETHODIMP_(REFERENCE_TIME) GetSegmentStart();
-	STDMETHODIMP_(REFERENCE_TIME) GetSegmentStop();
-	STDMETHODIMP_(void) SetSegmentStart(REFERENCE_TIME rtStart);
-	STDMETHODIMP_(void) SetSegmentStop(REFERENCE_TIME rtStop);
+	STDMETHODIMP_(REFERENCE_TIME) GetSegmentStart() override;
+	STDMETHODIMP_(REFERENCE_TIME) GetSegmentStop() override;
+	STDMETHODIMP_(void) SetSegmentStart(REFERENCE_TIME rtStart) override;
+	STDMETHODIMP_(void) SetSegmentStop(REFERENCE_TIME rtStop) override;
 
 };
 
@@ -209,13 +209,13 @@ public:
 
 	// ISubPicAllocator
 
-	STDMETHODIMP SetCurSize(SIZE cursize);
-	STDMETHODIMP SetCurVidRect(RECT curvidrect);
-	STDMETHODIMP GetStatic(ISubPic** ppSubPic);
-	STDMETHODIMP AllocDynamic(ISubPic** ppSubPic);
-	STDMETHODIMP_(bool) IsDynamicWriteOnly();
-	STDMETHODIMP ChangeDevice(IUnknown* pDev);
-	STDMETHODIMP SetMaxTextureSize(SIZE MaxTextureSize) { return E_NOTIMPL; };
+	STDMETHODIMP SetCurSize(SIZE cursize) override;
+	STDMETHODIMP SetCurVidRect(RECT curvidrect) override;
+	STDMETHODIMP GetStatic(ISubPic** ppSubPic) override;
+	STDMETHODIMP AllocDynamic(ISubPic** ppSubPic) override;
+	STDMETHODIMP_(bool) IsDynamicWriteOnly() override;
+	STDMETHODIMP ChangeDevice(IUnknown* pDev) override;
+	STDMETHODIMP SetMaxTextureSize(SIZE MaxTextureSize) override { return E_NOTIMPL; };
 };
 
 //
@@ -254,17 +254,17 @@ public:
 
 	// ISubPicProvider
 
-	STDMETHODIMP Lock();
-	STDMETHODIMP Unlock();
+	STDMETHODIMP Lock() override;
+	STDMETHODIMP Unlock() override;
 
-	STDMETHODIMP_(POSITION) GetStartPosition(REFERENCE_TIME rt, double fps) = 0;
-	STDMETHODIMP_(POSITION) GetNext(POSITION pos) = 0;
+	STDMETHODIMP_(POSITION) GetStartPosition(REFERENCE_TIME rt, double fps) override = 0;
+	STDMETHODIMP_(POSITION) GetNext(POSITION pos) override = 0;
 
-	STDMETHODIMP_(REFERENCE_TIME) GetStart(POSITION pos, double fps) = 0;
-	STDMETHODIMP_(REFERENCE_TIME) GetStop(POSITION pos, double fps) = 0;
+	STDMETHODIMP_(REFERENCE_TIME) GetStart(POSITION pos, double fps) override = 0;
+	STDMETHODIMP_(REFERENCE_TIME) GetStop(POSITION pos, double fps) override = 0;
 
-	STDMETHODIMP Render(SubPicDesc& spd, REFERENCE_TIME rt, double fps, RECT& bbox) = 0;
-	STDMETHODIMP GetTextureSize (POSITION pos, SIZE& MaxTextureSize, SIZE& VirtualSize, POINT& VirtualTopLeft) { return E_NOTIMPL; };
+	STDMETHODIMP Render(SubPicDesc& spd, REFERENCE_TIME rt, double fps, RECT& bbox) override = 0;
+	STDMETHODIMP GetTextureSize (POSITION pos, SIZE& MaxTextureSize, SIZE& VirtualSize, POINT& VirtualTopLeft) override { return E_NOTIMPL; };
 };
 
 //
@@ -310,11 +310,11 @@ public:
 
 	// ISubPicQueue
 
-	STDMETHODIMP SetSubPicProvider(ISubPicProvider* pSubPicProvider);
-	STDMETHODIMP GetSubPicProvider(ISubPicProvider** pSubPicProvider);
+	STDMETHODIMP SetSubPicProvider(ISubPicProvider* pSubPicProvider) override;
+	STDMETHODIMP GetSubPicProvider(ISubPicProvider** pSubPicProvider) override;
 
-	STDMETHODIMP SetFPS(double fps);
-	STDMETHODIMP SetTime(REFERENCE_TIME rtNow);
+	STDMETHODIMP SetFPS(double fps) override;
+	STDMETHODIMP SetTime(REFERENCE_TIME rtNow) override;
 /*
 	STDMETHODIMP Invalidate(REFERENCE_TIME rtInvalidate = -1) = 0;
 	STDMETHODIMP_(bool) LookupSubPic(REFERENCE_TIME rtNow, ISubPic** ppSubPic) = 0;
@@ -354,14 +354,14 @@ public:
 
 	// ISubPicQueue
 
-	STDMETHODIMP SetFPS(double fps);
-	STDMETHODIMP SetTime(REFERENCE_TIME rtNow);
+	STDMETHODIMP SetFPS(double fps) override;
+	STDMETHODIMP SetTime(REFERENCE_TIME rtNow) override;
 
-	STDMETHODIMP Invalidate(REFERENCE_TIME rtInvalidate = -1);
-	STDMETHODIMP_(bool) LookupSubPic(REFERENCE_TIME rtNow, CComPtr<ISubPic> &pSubPic);
+	STDMETHODIMP Invalidate(REFERENCE_TIME rtInvalidate = -1) override;
+	STDMETHODIMP_(bool) LookupSubPic(REFERENCE_TIME rtNow, CComPtr<ISubPic> &pSubPic) override;
 
-	STDMETHODIMP GetStats(int& nSubPics, REFERENCE_TIME& rtNow, REFERENCE_TIME& rtStart, REFERENCE_TIME& rtStop);
-	STDMETHODIMP GetStats(int nSubPic, REFERENCE_TIME& rtStart, REFERENCE_TIME& rtStop);
+	STDMETHODIMP GetStats(int& nSubPics, REFERENCE_TIME& rtNow, REFERENCE_TIME& rtStart, REFERENCE_TIME& rtStop) override;
+	STDMETHODIMP GetStats(int nSubPic, REFERENCE_TIME& rtStart, REFERENCE_TIME& rtStop) override;
 };
 #endif // _WIN32
 
@@ -376,11 +376,11 @@ public:
 
 	// ISubPicQueue
 
-	STDMETHODIMP Invalidate(REFERENCE_TIME rtInvalidate = -1);
-	STDMETHODIMP_(bool) LookupSubPic(REFERENCE_TIME rtNow, CComPtr<ISubPic> &pSubPic);
+	STDMETHODIMP Invalidate(REFERENCE_TIME rtInvalidate = -1) override;
+	STDMETHODIMP_(bool) LookupSubPic(REFERENCE_TIME rtNow, CComPtr<ISubPic> &pSubPic) override;
 
-	STDMETHODIMP GetStats(int& nSubPics, REFERENCE_TIME& rtNow, REFERENCE_TIME& rtStart, REFERENCE_TIME& rtStop);
-	STDMETHODIMP GetStats(int nSubPic, REFERENCE_TIME& rtStart, REFERENCE_TIME& rtStop);
+	STDMETHODIMP GetStats(int& nSubPics, REFERENCE_TIME& rtNow, REFERENCE_TIME& rtStart, REFERENCE_TIME& rtStop) override;
+	STDMETHODIMP GetStats(int nSubPic, REFERENCE_TIME& rtStart, REFERENCE_TIME& rtStop) override;
 };
 
 #ifdef _WIN32
