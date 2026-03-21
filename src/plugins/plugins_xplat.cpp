@@ -178,12 +178,185 @@ public:
 } // namespace Plugin
 
 //
-// AviSynth interface (using AviSynth+ cross-platform SDK)
+// AviSynth+ interface (cross-platform)
 //
 
-// TODO: AviSynth+ 3.x cross-platform headers need to replace
-// the legacy avisynth1.h/avisynth25.h headers.
-// For now, only VapourSynth is enabled cross-platform.
+#ifndef _WIN32
+
+// Suppress macro redefinition warnings from avs/posix.h vs our compat layer
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmacro-redefined"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpragmas"
+#endif
+
+namespace AviSynthPlus {
+#include "avisynthplus.h"
+
+const AVS_Linkage* AVS_linkage = nullptr;
+
+static bool s_fSwapUV = false;
+
+class CAvisynthFilter : public GenericVideoFilter, virtual public Plugin::CFilter
+{
+public:
+    VFRTranslator *vfr;
+
+    CAvisynthFilter(PClip c, IScriptEnvironment* env, VFRTranslator *_vfr = 0) : GenericVideoFilter(c), vfr(_vfr) {}
+
+    PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env)
+    {
+        PVideoFrame frame = child->GetFrame(n, env);
+
+        env->MakeWritable(&frame);
+
+        SubPicDesc dst;
+        dst.w = vi.width;
+        dst.h = vi.height;
+        dst.pitch = frame->GetPitch();
+        dst.pitchUV = frame->GetPitch(PLANAR_U);
+        dst.bits = (void**)frame->GetWritePtr();
+        dst.bitsU = frame->GetWritePtr(PLANAR_U);
+        dst.bitsV = frame->GetWritePtr(PLANAR_V);
+        dst.bpp = dst.pitch / dst.w * 8;
+        dst.type =
+            vi.IsRGB32() ? MSP_RGB32 :
+            vi.IsRGB24() ? MSP_RGB24 :
+            vi.IsYUY2() ? MSP_YUY2 :
+            vi.IsYV12() ? (s_fSwapUV ? MSP_IYUV : MSP_YV12) :
+            -1;
+
+        float fps = m_fps > 0 ? m_fps : (float)vi.fps_numerator / vi.fps_denominator;
+
+        REFERENCE_TIME timestamp;
+
+        if (!vfr)
+            timestamp = (REFERENCE_TIME)(10000000LL * n / fps);
+        else
+            timestamp = (REFERENCE_TIME)(10000000.0 * vfr->TimeStampFromFrameNumber(n));
+
+        Render(dst, timestamp, fps);
+
+        return frame;
+    }
+};
+
+class CVobSubAvisynthFilter : public Plugin::CVobSubFilter, public CAvisynthFilter
+{
+public:
+    CVobSubAvisynthFilter(PClip c, const char* fn, IScriptEnvironment* env)
+        : CVobSubFilter(CString(fn))
+        , CAvisynthFilter(c, env)
+    {
+        if (!m_pSubPicProvider)
+            env->ThrowError("VobSub: Can't open \"%s\"", fn);
+    }
+};
+
+class CTextSubAvisynthFilter : public Plugin::CTextSubFilter, public CAvisynthFilter
+{
+public:
+    CTextSubAvisynthFilter(PClip c, IScriptEnvironment* env, const char* fn, int CharSet = DEFAULT_CHARSET, float fps = -1, VFRTranslator *vfr = 0)
+        : CTextSubFilter(CString(fn), CharSet, fps)
+        , CAvisynthFilter(c, env, vfr)
+    {
+        if (!m_pSubPicProvider)
+            env->ThrowError("TextSubMod: Can't open \"%s\"", fn);
+    }
+};
+
+AVSValue __cdecl VobSubCreateS(AVSValue args, void* user_data, IScriptEnvironment* env)
+{
+    return(new CVobSubAvisynthFilter(args[0].AsClip(), args[1].AsString(), env));
+}
+
+AVSValue __cdecl TextSubCreateGeneral(AVSValue args, void* user_data, IScriptEnvironment* env)
+{
+    if (!args[1].Defined())
+        env->ThrowError("TextSubMod: You must specify a subtitle file to use");
+    VFRTranslator *vfr = 0;
+    if (args[4].Defined())
+        vfr = GetVFRTranslator(args[4].AsString());
+
+    return(new CTextSubAvisynthFilter(
+               args[0].AsClip(),
+               env,
+               args[1].AsString(),
+               args[2].AsInt(DEFAULT_CHARSET),
+               args[3].AsFloat(-1),
+               vfr));
+}
+
+AVSValue __cdecl TextSubSwapUV(AVSValue args, void* user_data, IScriptEnvironment* env)
+{
+    s_fSwapUV = args[0].AsBool(false);
+    return(AVSValue());
+}
+
+AVSValue __cdecl MaskSubCreate(AVSValue args, void* user_data, IScriptEnvironment* env)
+{
+    if (!args[0].Defined())
+        env->ThrowError("MaskSubMod: You must specify a subtitle file to use");
+    if (!args[3].Defined() && !args[6].Defined())
+        env->ThrowError("MaskSubMod: You must specify either FPS or a VFR timecodes file");
+    VFRTranslator *vfr = 0;
+    if (args[6].Defined())
+        vfr = GetVFRTranslator(args[6].AsString());
+
+    AVSValue rgb32("RGB32");
+    AVSValue fps(args[3].AsFloat(25));
+    AVSValue tab[5] =
+    {
+        args[1],
+        args[2],
+        args[3],
+        args[4],
+        rgb32
+    };
+    AVSValue value(tab, 5);
+    const char * nom[5] =
+    {
+        "width",
+        "height",
+        "fps",
+        "length",
+        "pixel_type"
+    };
+    AVSValue clip(env->Invoke("Blackness", value, nom));
+    env->SetVar(env->SaveString("RGBA"), true);
+    return(new CTextSubAvisynthFilter(
+               clip.AsClip(),
+               env,
+               args[0].AsString(),
+               args[5].AsInt(DEFAULT_CHARSET),
+               args[3].AsFloat(-1),
+               vfr));
+}
+
+extern "C" __attribute__((visibility("default")))
+const char* AvisynthPluginInit3(IScriptEnvironment* env, const AVS_Linkage* const vectors)
+{
+    AVS_linkage = vectors;
+
+    env->AddFunction("VobSub", "cs", VobSubCreateS, 0);
+    env->AddFunction("TextSubMod", "c[file]s[charset]i[fps]f[vfr]s", TextSubCreateGeneral, 0);
+    env->AddFunction("TextSubModSwapUV", "b", TextSubSwapUV, 0);
+    env->AddFunction("MaskSubMod", "[file]s[width]i[height]i[fps]f[length]i[charset]i[vfr]s", MaskSubCreate, 0);
+    env->SetVar(env->SaveString("RGBA"), false);
+    return(NULL);
+}
+
+} // namespace AviSynthPlus
+
+#ifdef __clang__
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+#endif // !_WIN32
 
 //
 // VapourSynth interface

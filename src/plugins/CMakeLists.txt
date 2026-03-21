@@ -14,6 +14,11 @@ if(WIN32)
     target_include_directories(vsfiltermod_plugin PRIVATE
         ${CMAKE_SOURCE_DIR}/include
     )
+else()
+    # AviSynth+ cross-platform headers
+    target_include_directories(vsfiltermod_plugin PRIVATE
+        ${CMAKE_SOURCE_DIR}/include/avisynth
+    )
 endif()
 
 target_link_libraries(vsfiltermod_plugin PRIVATE
