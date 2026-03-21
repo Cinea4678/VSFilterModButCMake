@@ -24,8 +24,12 @@
  */
 
 #include "stdafx.h"
+#if defined(__aarch64__)
+#include "sse2neon.h"
+#elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 #include <xmmintrin.h>
 #include <emmintrin.h>
+#endif
 #include "SSF.h"
 #include "../subpic/MemSubPic.h"
 

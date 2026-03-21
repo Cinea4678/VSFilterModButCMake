@@ -930,7 +930,11 @@ static __forceinline void pixmix2_sse2(DWORD* dst, DWORD color, DWORD shapealpha
     *dst = (DWORD)_mm_cvtsi128_si32(r);
 }
 
+#if defined(__aarch64__)
+// mmintrin.h functions are already provided by sse2neon.h included above
+#else
 #include <mmintrin.h>
+#endif
 
 // Calculate a - b clamping to 0 instead of underflowing
 

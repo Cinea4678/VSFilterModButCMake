@@ -146,7 +146,11 @@ void CWord::Paint(CPoint p, CPoint org)
 }
 
 #ifdef _VSMOD
+#if defined(__aarch64__)
+#include "sse2neon.h"
+#elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 #include <emmintrin.h>
+#endif
 #endif
 
 void CWord::Transform(CPoint org)

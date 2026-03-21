@@ -28,12 +28,12 @@ target_compile_definitions(vsfiltermod_plugin PRIVATE
     _VSMOD
 )
 
-# On non-Windows, link pthread and dl
+# On non-Windows, link pthread (and dl on Linux)
 if(NOT WIN32)
-    target_link_libraries(vsfiltermod_plugin PRIVATE
-        pthread
-        dl
-    )
+    target_link_libraries(vsfiltermod_plugin PRIVATE pthread)
+    if(NOT APPLE)
+        target_link_libraries(vsfiltermod_plugin PRIVATE dl)
+    endif()
 endif()
 
 # On macOS, set dylib install name
