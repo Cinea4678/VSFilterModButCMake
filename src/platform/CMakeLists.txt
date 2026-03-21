@@ -10,12 +10,8 @@ else()
     target_sources(platform PRIVATE font_engine_freetype.cpp)
     target_link_libraries(platform PUBLIC
         Freetype::Freetype
-        ${HARFBUZZ_LIBRARIES}
-        ${FONTCONFIG_LIBRARIES}
-    )
-    target_include_directories(platform PUBLIC
-        ${HARFBUZZ_INCLUDE_DIRS}
-        ${FONTCONFIG_INCLUDE_DIRS}
+        PkgConfig::HARFBUZZ
+        PkgConfig::FONTCONFIG
     )
 endif()
 

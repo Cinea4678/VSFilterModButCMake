@@ -62,8 +62,8 @@ endif()
 if(NOT WIN32)
     find_package(Freetype REQUIRED)
     find_package(PkgConfig REQUIRED)
-    pkg_check_modules(HARFBUZZ REQUIRED harfbuzz)
-    pkg_check_modules(FONTCONFIG REQUIRED fontconfig)
+    pkg_check_modules(HARFBUZZ REQUIRED IMPORTED_TARGET harfbuzz)
+    pkg_check_modules(FONTCONFIG REQUIRED IMPORTED_TARGET fontconfig)
 endif()
 
 # On ARM64 (Apple Silicon), fetch sse2neon for SSE2→NEON translation
