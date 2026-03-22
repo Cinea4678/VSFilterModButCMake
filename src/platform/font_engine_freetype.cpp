@@ -9,6 +9,7 @@
 #include FT_FREETYPE_H
 #include FT_OUTLINE_H
 #include FT_TRUETYPE_IDS_H
+#include FT_TRUETYPE_TABLES_H
 
 #include <hb.h>
 #include <hb-ft.h>
@@ -40,6 +41,11 @@ public:
         FT_Error err = FT_New_Face(ftLib, fontPath.c_str(), 0, &m_face);
         if (err) return;
 
+        // Get OS/2 table for Windows GDI-compatible metrics.
+        // Windows uses usWinAscent/usWinDescent (not hhea ascender/descender)
+        // for cell height calculation and TEXTMETRIC values.
+        TT_OS2* os2 = (TT_OS2*)FT_Get_Sfnt_Table(m_face, FT_SFNT_OS2);
+
         // Set pixel size to match Windows GDI behavior:
         // - Positive lfHeight = cell height (ascender + descender in pixels)
         // - Negative lfHeight = em height (character height in pixels)
@@ -49,11 +55,12 @@ public:
         if (requestedHeight == 0) requestedHeight = 16;
 
         if (lf.lfHeight > 0 && m_face->units_per_EM > 0) {
-            // Positive lfHeight = cell height. Scale em size so that
-            // cell_height (ascender - descender in font units) maps to requestedHeight pixels.
-            FT_Short fontAsc = m_face->ascender;
-            FT_Short fontDesc = m_face->descender; // negative
-            int cellUnits = fontAsc - fontDesc;
+            int cellUnits = 0;
+            if (os2 && (os2->usWinAscent + os2->usWinDescent) > 0) {
+                cellUnits = os2->usWinAscent + os2->usWinDescent;
+            } else {
+                cellUnits = m_face->ascender - m_face->descender;
+            }
             if (cellUnits > 0) {
                 m_pixelHeight = (int)((long long)requestedHeight * m_face->units_per_EM / cellUnits);
             } else {
@@ -67,11 +74,19 @@ public:
         // Create HarfBuzz font
         m_hbFont = hb_ft_font_create(m_face, nullptr);
 
-        // Cache metrics
-        m_metrics.height = (int)(m_face->size->metrics.height >> 6);
-        m_metrics.ascent = (int)(m_face->size->metrics.ascender >> 6);
-        m_metrics.descent = (int)(-m_face->size->metrics.descender >> 6);
-        m_metrics.internalLeading = m_metrics.height - m_metrics.ascent - m_metrics.descent;
+        // Cache metrics to match Windows GDI TEXTMETRIC values.
+        if (os2 && (os2->usWinAscent + os2->usWinDescent) > 0) {
+            int upem = m_face->units_per_EM;
+            m_metrics.ascent = (int)((long long)os2->usWinAscent * m_pixelHeight / upem);
+            m_metrics.descent = (int)((long long)os2->usWinDescent * m_pixelHeight / upem);
+            m_metrics.height = m_metrics.ascent + m_metrics.descent;
+        } else {
+            m_metrics.height = (int)(m_face->size->metrics.height >> 6);
+            m_metrics.ascent = (int)(m_face->size->metrics.ascender >> 6);
+            m_metrics.descent = (int)(-m_face->size->metrics.descender >> 6);
+        }
+        m_metrics.internalLeading = m_metrics.height - m_pixelHeight;
+        if (m_metrics.internalLeading < 0) m_metrics.internalLeading = 0;
         m_metrics.externalLeading = 0;
         m_metrics.aveCharWidth = (int)(m_face->size->metrics.max_advance >> 6) / 2;
         m_metrics.maxCharWidth = (int)(m_face->size->metrics.max_advance >> 6);
