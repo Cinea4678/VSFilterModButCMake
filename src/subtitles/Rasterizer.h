@@ -177,6 +177,11 @@ public:
     bool EndPath(HDC hdc);
     bool PartialBeginPath(HDC hdc, bool bClearPath);
     bool PartialEndPath(HDC hdc, long dx, long dy);
+#ifndef _WIN32
+    // Cross-platform path methods using IFontEngine PathCommand data
+    bool SetPathData(const POINT* points, const BYTE* types, int count);
+    bool AppendPathData(const POINT* points, const BYTE* types, int count, long dx, long dy);
+#endif
     bool ScanConvert();
     bool CreateWidenedRegion(int borderX, int borderY);
     void DeleteOutlines();

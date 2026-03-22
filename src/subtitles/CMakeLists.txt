@@ -75,6 +75,7 @@ target_link_libraries(subtitles PUBLIC
     libssf
     libpng
     zlib
+    platform
 )
 
 if(VSFILTERMOD_BUILD_DIRECTSHOW)

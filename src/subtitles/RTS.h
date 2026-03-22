@@ -23,6 +23,7 @@
 
 #ifndef _WIN32
 #include "../compat/compat.h"
+#include "../platform/font_engine.h"
 #endif
 #include "STS.h"
 #include "Rasterizer.h"
@@ -32,6 +33,9 @@ class CMyFont : public CFont
 {
 public:
     int m_ascent, m_descent;
+#ifndef _WIN32
+    std::unique_ptr<IFontInstance> m_fontInstance;
+#endif
 
     CMyFont(STSStyle& style);
 };

@@ -25,9 +25,58 @@
 #include <time.h>
 #include "RTS.h"
 
+#ifndef _WIN32
+#include "../platform/font_engine.h"
+#endif
+
 // WARNING: this isn't very thread safe, use only one RTS a time.
 static HDC g_hDC;
 static int g_hDC_refcnt = 0;
+
+#ifndef _WIN32
+// Convert IFontEngine PathCommand vector to GDI-style POINT/BYTE arrays
+static void ConvertPathCommandsToGDI(const std::vector<PathCommand>& cmds,
+                                      std::vector<POINT>& points,
+                                      std::vector<BYTE>& types)
+{
+    points.clear();
+    types.clear();
+    points.reserve(cmds.size());
+    types.reserve(cmds.size());
+
+    for (const auto& cmd : cmds) {
+        switch (cmd.type) {
+        case PathCommandType::MoveTo:
+            points.push_back(cmd.pt);
+            types.push_back(PT_MOVETO);
+            break;
+        case PathCommandType::LineTo:
+            points.push_back(cmd.pt);
+            types.push_back(PT_LINETO);
+            break;
+        case PathCommandType::QuadSplineTo:
+            // Convert quadratic to cubic bezier for compatibility
+            // Q(t) with control P1 and endpoint P2:
+            // C1 = P0 + 2/3*(P1-P0), C2 = P2 + 2/3*(P1-P2)
+            // But the rasterizer handles PT_BEZIERTO as cubic (3 control points)
+            // For now, pass as-is - the ScanConvert handles bezier curves
+            points.push_back(cmd.pt);
+            types.push_back(PT_BEZIERTO);
+            break;
+        case PathCommandType::CubicBezierTo:
+            points.push_back(cmd.pt);
+            types.push_back(PT_BEZIERTO);
+            break;
+        case PathCommandType::CloseFigure:
+            // Mark previous point with PT_CLOSEFIGURE flag
+            if (!types.empty()) {
+                types.back() |= PT_CLOSEFIGURE;
+            }
+            break;
+        }
+    }
+}
+#endif
 
 static long revcolor(long c)
 {
@@ -52,6 +101,7 @@ CMyFont::CMyFont(STSStyle& style)
     lf.lfOrientation = (LONG)style.mod_fontOrient;
 #endif
 
+#ifdef _WIN32
     if(!CreateFontIndirect(&lf))
     {
         _tcscpy(lf.lfFaceName, _T("Arial"));
@@ -64,6 +114,17 @@ CMyFont::CMyFont(STSStyle& style)
     m_ascent = ((tm.tmAscent + 4) >> 3);
     m_descent = ((tm.tmDescent + 4) >> 3);
     SelectFont(g_hDC, hOldFont);
+#else
+    m_fontInstance = IFontEngine::GetInstance().CreateFont(lf);
+    if (m_fontInstance) {
+        FontMetrics fm = m_fontInstance->GetMetrics();
+        m_ascent = ((fm.ascent + 4) >> 3);
+        m_descent = ((fm.descent + 4) >> 3);
+    } else {
+        m_ascent = 0;
+        m_descent = 0;
+    }
+#endif
 }
 
 // CWord
@@ -559,15 +620,15 @@ CText::CText(STSStyle& style, CStringW str, int ktype, int kstart, int kend, dou
 
     CMyFont font(m_style);
 
-    HFONT hOldFont = SelectFont(g_hDC, font);
-
 #ifdef _VSMOD // patch m007. symbol rotating
     double t = (double)m_style.mod_fontOrient * 3.1415926 / 1800;
 #endif
+
+#ifdef _WIN32
+    HFONT hOldFont = SelectFont(g_hDC, font);
+
     if(m_style.fontSpacing || (long)GetVersion() < 0)
     {
-        bool bFirstPath = true;
-
         for(LPCWSTR s = m_str; *s; s++)
         {
             CSize extent;
@@ -577,13 +638,12 @@ CText::CText(STSStyle& style, CStringW str, int ktype, int kstart, int kend, dou
                 ASSERT(0);
                 return;
             }
-#ifdef _VSMOD // patch m007. symbol rotating
+#ifdef _VSMOD
             m_width += (int)(extent.cx * abs(cos(t)) + extent.cy * abs(sin(t)) + m_style.fontSpacing);
 #else
             m_width += extent.cx + (int)m_style.fontSpacing;
 #endif
         }
-//			m_width -= (int)m_style.fontSpacing; // TODO: subtract only at the end of the line
     }
     else
     {
@@ -594,16 +654,43 @@ CText::CText(STSStyle& style, CStringW str, int ktype, int kstart, int kend, dou
             ASSERT(0);
             return;
         }
-#ifdef _VSMOD // patch m007. symbol rotating
+#ifdef _VSMOD
         m_width += (int)(extent.cx * abs(cos(t)) + extent.cy * abs(sin(t)));
 #else
         m_width += extent.cx;
 #endif
     }
 
-    m_width = (int)(m_style.fontScaleX / 100 * m_width + 4) >> 3;
-
     SelectFont(g_hDC, hOldFont);
+#else // !_WIN32
+    if (font.m_fontInstance) {
+        if(m_style.fontSpacing || (long)GetVersion() < 0)
+        {
+            for(LPCWSTR s = m_str; *s; s++)
+            {
+                CSize extent;
+                font.m_fontInstance->GetCharExtent(*s, &extent);
+#ifdef _VSMOD
+                m_width += (int)(extent.cx * abs(cos(t)) + extent.cy * abs(sin(t)) + m_style.fontSpacing);
+#else
+                m_width += extent.cx + (int)m_style.fontSpacing;
+#endif
+            }
+        }
+        else
+        {
+            CSize extent;
+            font.m_fontInstance->GetTextExtent((const wchar_t*)m_str, m_str.GetLength(), &extent);
+#ifdef _VSMOD
+            m_width += (int)(extent.cx * abs(cos(t)) + extent.cy * abs(sin(t)));
+#else
+            m_width += extent.cx;
+#endif
+        }
+    }
+#endif // _WIN32
+
+    m_width = (int)(m_style.fontScaleX / 100 * m_width + 4) >> 3;
 }
 
 CWord* CText::Copy()
@@ -620,6 +707,7 @@ bool CText::CreatePath()
 {
     CMyFont font(m_style);
 
+#ifdef _WIN32
     HFONT hOldFont = SelectFont(g_hDC, font);
 
     int width = 0;
@@ -662,6 +750,48 @@ bool CText::CreatePath()
     }
 
     SelectFont(g_hDC, hOldFont);
+#else // !_WIN32
+    if (!font.m_fontInstance) return false;
+
+    int width = 0;
+
+    if(m_style.fontSpacing || (long)GetVersion() < 0)
+    {
+        bool bFirst = true;
+
+        for(LPCWSTR s = m_str; *s; s++)
+        {
+            CSize extent;
+            font.m_fontInstance->GetCharExtent(*s, &extent);
+
+            std::vector<PathCommand> cmds;
+            font.m_fontInstance->GetGlyphOutline(s, 1, cmds);
+
+            std::vector<POINT> pts;
+            std::vector<BYTE> tps;
+            ConvertPathCommandsToGDI(cmds, pts, tps);
+
+            if (bFirst) {
+                SetPathData(nullptr, nullptr, 0); // clear existing path
+                bFirst = false;
+            }
+            AppendPathData(pts.data(), tps.data(), (int)pts.size(), width, 0);
+
+            width += extent.cx + (int)m_style.fontSpacing;
+        }
+    }
+    else
+    {
+        std::vector<PathCommand> cmds;
+        font.m_fontInstance->GetGlyphOutline((const wchar_t*)m_str, m_str.GetLength(), cmds);
+
+        std::vector<POINT> pts;
+        std::vector<BYTE> tps;
+        ConvertPathCommandsToGDI(cmds, pts, tps);
+
+        SetPathData(pts.data(), tps.data(), (int)pts.size());
+    }
+#endif // _WIN32
 
     return(true);
 }
@@ -1677,6 +1807,7 @@ CRenderedTextSubtitle::CRenderedTextSubtitle(CCritSec* pLock, STSStyle *styleOve
 
     if(g_hDC_refcnt == 0)
     {
+#ifdef _WIN32
         g_hDC = CreateCompatibleDC(NULL);
 #ifdef _VSMOD // patch m007. symbol rotating
         SetGraphicsMode(g_hDC, GM_ADVANCED); // patch for lfOrientation
@@ -1684,6 +1815,7 @@ CRenderedTextSubtitle::CRenderedTextSubtitle(CCritSec* pLock, STSStyle *styleOve
         SetBkMode(g_hDC, TRANSPARENT);
         SetTextColor(g_hDC, 0xffffff);
         SetMapMode(g_hDC, MM_TEXT);
+#endif
     }
 
     g_hDC_refcnt++;
@@ -1694,7 +1826,9 @@ CRenderedTextSubtitle::~CRenderedTextSubtitle()
     Deinit();
 
     g_hDC_refcnt--;
+#ifdef _WIN32
     if(g_hDC_refcnt == 0) DeleteDC(g_hDC);
+#endif
 }
 
 void CRenderedTextSubtitle::Copy(CSimpleTextSubtitle& sts)

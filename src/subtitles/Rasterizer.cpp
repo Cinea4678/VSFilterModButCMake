@@ -363,6 +363,43 @@ bool Rasterizer::PartialEndPath(HDC hdc, long dx, long dy)
     return false;
 }
 
+#ifndef _WIN32
+bool Rasterizer::SetPathData(const POINT* points, const BYTE* types, int count)
+{
+    _TrashPath();
+    if (count <= 0) return true;
+
+    mpPathTypes = (BYTE*)malloc(sizeof(BYTE) * count);
+    mpPathPoints = (POINT*)malloc(sizeof(POINT) * count);
+    if (!mpPathTypes || !mpPathPoints) return false;
+
+    memcpy(mpPathTypes, types, sizeof(BYTE) * count);
+    memcpy(mpPathPoints, points, sizeof(POINT) * count);
+    mPathPoints = count;
+    return true;
+}
+
+bool Rasterizer::AppendPathData(const POINT* points, const BYTE* types, int count, long dx, long dy)
+{
+    if (count <= 0) return true;
+
+    BYTE* pNewTypes = (BYTE*)realloc(mpPathTypes, (mPathPoints + count) * sizeof(BYTE));
+    POINT* pNewPoints = (POINT*)realloc(mpPathPoints, (mPathPoints + count) * sizeof(POINT));
+    if (!pNewTypes || !pNewPoints) return false;
+
+    mpPathTypes = pNewTypes;
+    mpPathPoints = pNewPoints;
+
+    for (int i = 0; i < count; ++i) {
+        mpPathPoints[mPathPoints + i].x = points[i].x + dx;
+        mpPathPoints[mPathPoints + i].y = points[i].y + dy;
+        mpPathTypes[mPathPoints + i] = types[i];
+    }
+    mPathPoints += count;
+    return true;
+}
+#endif
+
 bool Rasterizer::ScanConvert()
 {
     size_t lastmoveto = -1;
