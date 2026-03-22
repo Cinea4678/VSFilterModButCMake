@@ -34,7 +34,9 @@ static HDC g_hDC;
 static int g_hDC_refcnt = 0;
 
 #ifndef _WIN32
-// Convert IFontEngine PathCommand vector to GDI-style POINT/BYTE arrays
+// Convert IFontEngine PathCommand vector to GDI-style POINT/BYTE arrays.
+// After FT_Outline_Decompose, we only get MoveTo, LineTo, CubicBezierTo
+// (conics are converted to cubics in the conic_to callback), and CloseFigure.
 static void ConvertPathCommandsToGDI(const std::vector<PathCommand>& cmds,
                                       std::vector<POINT>& points,
                                       std::vector<BYTE>& types)
@@ -55,20 +57,11 @@ static void ConvertPathCommandsToGDI(const std::vector<PathCommand>& cmds,
             types.push_back(PT_LINETO);
             break;
         case PathCommandType::QuadSplineTo:
-            // Convert quadratic to cubic bezier for compatibility
-            // Q(t) with control P1 and endpoint P2:
-            // C1 = P0 + 2/3*(P1-P0), C2 = P2 + 2/3*(P1-P2)
-            // But the rasterizer handles PT_BEZIERTO as cubic (3 control points)
-            // For now, pass as-is - the ScanConvert handles bezier curves
-            points.push_back(cmd.pt);
-            types.push_back(PT_BEZIERTO);
-            break;
         case PathCommandType::CubicBezierTo:
             points.push_back(cmd.pt);
             types.push_back(PT_BEZIERTO);
             break;
         case PathCommandType::CloseFigure:
-            // Mark previous point with PT_CLOSEFIGURE flag
             if (!types.empty()) {
                 types.back() |= PT_CLOSEFIGURE;
             }

@@ -40,9 +40,28 @@ public:
         FT_Error err = FT_New_Face(ftLib, fontPath.c_str(), 0, &m_face);
         if (err) return;
 
-        // Set pixel size
-        m_pixelHeight = lf.lfHeight < 0 ? -lf.lfHeight : lf.lfHeight;
-        if (m_pixelHeight == 0) m_pixelHeight = 16; // default
+        // Set pixel size to match Windows GDI behavior:
+        // - Positive lfHeight = cell height (ascender + descender in pixels)
+        // - Negative lfHeight = em height (character height in pixels)
+        // FreeType's FT_Set_Pixel_Sizes sets the em square size, so for positive
+        // lfHeight we must scale down to produce matching cell height.
+        int requestedHeight = lf.lfHeight < 0 ? -lf.lfHeight : lf.lfHeight;
+        if (requestedHeight == 0) requestedHeight = 16;
+
+        if (lf.lfHeight > 0 && m_face->units_per_EM > 0) {
+            // Positive lfHeight = cell height. Scale em size so that
+            // cell_height (ascender - descender in font units) maps to requestedHeight pixels.
+            FT_Short fontAsc = m_face->ascender;
+            FT_Short fontDesc = m_face->descender; // negative
+            int cellUnits = fontAsc - fontDesc;
+            if (cellUnits > 0) {
+                m_pixelHeight = (int)((long long)requestedHeight * m_face->units_per_EM / cellUnits);
+            } else {
+                m_pixelHeight = requestedHeight;
+            }
+        } else {
+            m_pixelHeight = requestedHeight;
+        }
         FT_Set_Pixel_Sizes(m_face, 0, m_pixelHeight);
 
         // Create HarfBuzz font
@@ -114,7 +133,11 @@ public:
         hb_glyph_info_t* infos = hb_buffer_get_glyph_infos(buf, &glyphCount);
         hb_glyph_position_t* positions = hb_buffer_get_glyph_positions(buf, &glyphCount);
 
-        int penX = 0, penY = 0;
+        int penX = 0;
+        // GDI TextOutW(hdc, 0, 0, ...) positions the cell top at y=0,
+        // so the baseline is at y=tmAscent. FreeType outlines have the
+        // baseline at y=0. Shift down by ascender to match GDI convention.
+        int baselineY = m_metrics.ascent;
 
         for (unsigned int i = 0; i < glyphCount; i++) {
             FT_UInt glyphIndex = infos[i].codepoint;
@@ -130,7 +153,7 @@ public:
 
             FT_Outline& outline = m_face->glyph->outline;
             int startX = penX + xOffset;
-            int startY = penY + yOffset;
+            int startY = baselineY - yOffset;
 
             // Convert FreeType outline to path commands
             ExtractOutline(outline, startX, startY, path);
@@ -145,44 +168,123 @@ public:
 private:
     void ExtractOutline(const FT_Outline& outline, int offsetX, int offsetY,
                          std::vector<PathCommand>& path) {
-        int contourStart = 0;
-        for (int c = 0; c < outline.n_contours; c++) {
-            int contourEnd = outline.contours[c];
-            bool firstPoint = true;
+        // Use FreeType's outline decomposition for correct handling of
+        // implicit on-curve points and proper curve conversion.
+        struct DecomposeCtx {
+            std::vector<PathCommand>* path;
+            int offsetX, offsetY;
+            bool hasStart;
+            POINT startPt; // first point of current contour
 
-            for (int p = contourStart; p <= contourEnd; p++) {
-                FT_Vector& pt = outline.points[p];
-                int x = (int)(pt.x >> 6) + offsetX;
-                int y = -(int)(pt.y >> 6) + offsetY; // Flip Y (FreeType Y is up)
-                char tag = outline.tags[p];
+            static POINT makePt(const FT_Vector* v, int ox, int oy) {
+                POINT p;
+                p.x = (int)(v->x >> 6) + ox;
+                p.y = -(int)(v->y >> 6) + oy; // flip Y
+                return p;
+            }
+        };
 
-                PathCommand cmd;
-                cmd.pt.x = x;
-                cmd.pt.y = y;
+        DecomposeCtx ctx;
+        ctx.path = &path;
+        ctx.offsetX = offsetX;
+        ctx.offsetY = offsetY;
+        ctx.hasStart = false;
+        ctx.startPt = {0, 0};
 
-                if (firstPoint) {
-                    cmd.type = PathCommandType::MoveTo;
-                    firstPoint = false;
-                } else if (FT_CURVE_TAG(tag) == FT_CURVE_TAG_ON) {
-                    cmd.type = PathCommandType::LineTo;
-                } else if (FT_CURVE_TAG(tag) == FT_CURVE_TAG_CONIC) {
-                    cmd.type = PathCommandType::QuadSplineTo;
-                } else if (FT_CURVE_TAG(tag) == FT_CURVE_TAG_CUBIC) {
-                    cmd.type = PathCommandType::CubicBezierTo;
-                } else {
-                    cmd.type = PathCommandType::LineTo;
-                }
+        FT_Outline_Funcs funcs = {};
 
-                path.push_back(cmd);
+        funcs.move_to = [](const FT_Vector* to, void* user) -> int {
+            auto* c = (DecomposeCtx*)user;
+            // Close previous contour if any
+            if (c->hasStart) {
+                PathCommand close;
+                close.type = PathCommandType::CloseFigure;
+                close.pt = {0, 0};
+                c->path->push_back(close);
+            }
+            PathCommand cmd;
+            cmd.type = PathCommandType::MoveTo;
+            cmd.pt = DecomposeCtx::makePt(to, c->offsetX, c->offsetY);
+            c->path->push_back(cmd);
+            c->startPt = cmd.pt;
+            c->hasStart = true;
+            return 0;
+        };
+
+        funcs.line_to = [](const FT_Vector* to, void* user) -> int {
+            auto* c = (DecomposeCtx*)user;
+            PathCommand cmd;
+            cmd.type = PathCommandType::LineTo;
+            cmd.pt = DecomposeCtx::makePt(to, c->offsetX, c->offsetY);
+            c->path->push_back(cmd);
+            return 0;
+        };
+
+        // Quadratic bezier (conic) → convert to cubic bezier
+        // Q(P0, P1, P2) → C(P0, P0+2/3*(P1-P0), P2+2/3*(P1-P2), P2)
+        funcs.conic_to = [](const FT_Vector* ctrl, const FT_Vector* to, void* user) -> int {
+            auto* c = (DecomposeCtx*)user;
+            POINT ctrlPt = DecomposeCtx::makePt(ctrl, c->offsetX, c->offsetY);
+            POINT toPt = DecomposeCtx::makePt(to, c->offsetX, c->offsetY);
+
+            // Get the current point (last emitted point)
+            POINT p0 = {0, 0};
+            if (!c->path->empty()) {
+                p0 = c->path->back().pt;
             }
 
-            // Close contour
+            // Convert quadratic to cubic: C1 = P0 + 2/3*(P1-P0), C2 = P2 + 2/3*(P1-P2)
+            PathCommand c1;
+            c1.type = PathCommandType::CubicBezierTo;
+            c1.pt.x = p0.x + (2 * (ctrlPt.x - p0.x) + 1) / 3;
+            c1.pt.y = p0.y + (2 * (ctrlPt.y - p0.y) + 1) / 3;
+            c->path->push_back(c1);
+
+            PathCommand c2;
+            c2.type = PathCommandType::CubicBezierTo;
+            c2.pt.x = toPt.x + (2 * (ctrlPt.x - toPt.x) + 1) / 3;
+            c2.pt.y = toPt.y + (2 * (ctrlPt.y - toPt.y) + 1) / 3;
+            c->path->push_back(c2);
+
+            PathCommand end;
+            end.type = PathCommandType::CubicBezierTo;
+            end.pt = toPt;
+            c->path->push_back(end);
+
+            return 0;
+        };
+
+        funcs.cubic_to = [](const FT_Vector* ctrl1, const FT_Vector* ctrl2,
+                            const FT_Vector* to, void* user) -> int {
+            auto* c = (DecomposeCtx*)user;
+
+            PathCommand c1;
+            c1.type = PathCommandType::CubicBezierTo;
+            c1.pt = DecomposeCtx::makePt(ctrl1, c->offsetX, c->offsetY);
+            c->path->push_back(c1);
+
+            PathCommand c2;
+            c2.type = PathCommandType::CubicBezierTo;
+            c2.pt = DecomposeCtx::makePt(ctrl2, c->offsetX, c->offsetY);
+            c->path->push_back(c2);
+
+            PathCommand end;
+            end.type = PathCommandType::CubicBezierTo;
+            end.pt = DecomposeCtx::makePt(to, c->offsetX, c->offsetY);
+            c->path->push_back(end);
+
+            return 0;
+        };
+
+        FT_Outline outline_copy = outline;
+        FT_Outline_Decompose(&outline_copy, &funcs, &ctx);
+
+        // Close the last contour
+        if (ctx.hasStart) {
             PathCommand close;
             close.type = PathCommandType::CloseFigure;
             close.pt = {0, 0};
             path.push_back(close);
-
-            contourStart = contourEnd + 1;
         }
     }
 
