@@ -94,8 +94,8 @@ public:
 
 class GDIFontEngine : public IFontEngine {
 public:
-    std::unique_ptr<IFontInstance> CreateFont(const LOGFONT& lf) override {
-        return std::make_unique<GDIFontInstance>(lf);
+    std::shared_ptr<IFontInstance> CreateFont(const LOGFONT& lf) override {
+        return std::make_shared<GDIFontInstance>(lf);
     }
 };
 

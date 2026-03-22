@@ -65,8 +65,8 @@ class IFontEngine {
 public:
     virtual ~IFontEngine() {}
 
-    // Create a font from LOGFONT (equivalent to CreateFontIndirect)
-    virtual std::unique_ptr<IFontInstance> CreateFont(const LOGFONT& lf) = 0;
+    // Create or retrieve a cached font from LOGFONT (equivalent to CreateFontIndirect)
+    virtual std::shared_ptr<IFontInstance> CreateFont(const LOGFONT& lf) = 0;
 
     // Get singleton instance
     static IFontEngine& GetInstance();

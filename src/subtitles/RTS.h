@@ -34,7 +34,7 @@ class CMyFont : public CFont
 public:
     int m_ascent, m_descent;
 #ifndef _WIN32
-    std::unique_ptr<IFontInstance> m_fontInstance;
+    std::shared_ptr<IFontInstance> m_fontInstance;
 #endif
 
     CMyFont(STSStyle& style);
