@@ -37,3 +37,7 @@ target_include_directories(BaseClasses PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(BaseClasses PRIVATE
     $<$<PLATFORM_ID:Windows>:WIN32>
 )
+
+if(WIN32)
+    target_link_libraries(BaseClasses PUBLIC winmm)
+endif()

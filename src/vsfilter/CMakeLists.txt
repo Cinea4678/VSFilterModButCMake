@@ -65,12 +65,9 @@ if(MSVC)
         "/MERGE:_TEXT64=.text"
     )
 
-    # System libraries
+    # Winmm is needed directly; strmiids, vfw32, Version come via dsutil PUBLIC
     target_link_libraries(VSFilterMod PRIVATE
         Winmm.lib
-        strmiids.lib
-        vfw32.lib
-        Version.lib
     )
 endif()
 

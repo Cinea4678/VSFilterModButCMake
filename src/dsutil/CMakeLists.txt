@@ -26,61 +26,54 @@ target_include_directories(dsutil PRIVATE
 
 target_link_libraries(dsutil PUBLIC BaseClasses)
 
+# System libraries needed by dsutil (DirectShow GUIDs, AVI, version info).
+# PUBLIC so consumers (vsfiltermod_plugin, VSFilterMod) get them automatically.
+if(MSVC)
+    target_link_libraries(dsutil PUBLIC
+        strmiids.lib
+        vfw32.lib
+        Version.lib
+    )
+endif()
+
 target_compile_definitions(dsutil PRIVATE
     $<$<PLATFORM_ID:Windows>:WIN32>
 )
 
-# Assembly files - Windows only with MASM/YASM
-if(MSVC)
-    enable_language(ASM_MASM)
-    if(CMAKE_SIZEOF_VOID_P EQUAL 4)
-        # Win32: use MASM (ml)
-        set_source_files_properties(a_yuv2rgb.asm PROPERTIES
-            LANGUAGE ASM_MASM
-            COMPILE_FLAGS "/safeseh /c /coff /Cx /nologo"
-        )
-        set_source_files_properties(a_yuvtable.asm PROPERTIES
-            LANGUAGE ASM_MASM
-            COMPILE_FLAGS "/c /coff /Cx /nologo"
-        )
-        set_source_files_properties(convert_a.asm PROPERTIES
-            LANGUAGE ASM_MASM
-            COMPILE_FLAGS "/safeseh /c /coff /Cx /nologo"
-        )
-        target_sources(dsutil PRIVATE a_yuv2rgb.asm a_yuvtable.asm convert_a.asm)
-    else()
-        # x64: a_yuvtable and convert_a use ml64, a_yuv2rgb uses yasm
-        set_source_files_properties(a_yuvtable.asm PROPERTIES
-            LANGUAGE ASM_MASM
-            COMPILE_FLAGS "/c /coff /Cx /nologo"
-        )
-        set_source_files_properties(convert_a.asm PROPERTIES
-            LANGUAGE ASM_MASM
-            COMPILE_FLAGS "/c /coff /Cx /nologo"
-        )
-        target_sources(dsutil PRIVATE a_yuvtable.asm convert_a.asm)
+# Assembly files - Windows Win32 only (all 3 asm files use 32-bit MASM syntax
+# and are ExcludedFromBuild on x64 in the original vcxproj).
+# Use add_custom_command to invoke ml.exe directly, matching the original
+# vcxproj CustomBuild approach (CMake's ASM_MASM language integration is
+# unreliable with the Visual Studio generator).
+if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 4)
+    set(_dsutil_asm_objs "")
+    foreach(_asm_src a_yuv2rgb.asm a_yuvtable.asm convert_a.asm)
+        get_filename_component(_asm_name "${_asm_src}" NAME_WE)
+        set(_asm_obj "${CMAKE_CURRENT_BINARY_DIR}/${_asm_name}.obj")
 
-        # a_yuv2rgb.asm on x64 uses yasm - add as custom command
-        find_program(YASM_EXECUTABLE yasm)
-        if(YASM_EXECUTABLE)
-            set(YUV2RGB_OBJ "${CMAKE_CURRENT_BINARY_DIR}/a_yuv2rgb.obj")
-            add_custom_command(
-                OUTPUT ${YUV2RGB_OBJ}
-                COMMAND ${YASM_EXECUTABLE} -X vc -g cv8 -f win64
-                    -o ${YUV2RGB_OBJ}
-                    ${CMAKE_CURRENT_SOURCE_DIR}/a_yuv2rgb.asm
-                DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/a_yuv2rgb.asm
-                COMMENT "Assembling a_yuv2rgb.asm with YASM"
-            )
-            target_sources(dsutil PRIVATE ${YUV2RGB_OBJ})
-            set_source_files_properties(${YUV2RGB_OBJ} PROPERTIES
-                EXTERNAL_OBJECT TRUE
-                GENERATED TRUE
-            )
+        # a_yuvtable.asm does not use /safeseh
+        if(_asm_src STREQUAL "a_yuvtable.asm")
+            set(_safeseh_flag "")
         else()
-            message(WARNING "YASM not found - a_yuv2rgb.asm will not be assembled for x64")
+            set(_safeseh_flag /safeseh)
         endif()
-    endif()
+
+        add_custom_command(
+            OUTPUT "${_asm_obj}"
+            COMMAND ml ${_safeseh_flag} /c /coff /Cx /nologo
+                    /Fo "${_asm_obj}" "${CMAKE_CURRENT_SOURCE_DIR}/${_asm_src}"
+            DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${_asm_src}"
+            COMMENT "Assembling ${_asm_src}"
+            VERBATIM
+        )
+        list(APPEND _dsutil_asm_objs "${_asm_obj}")
+    endforeach()
+
+    set_source_files_properties(${_dsutil_asm_objs} PROPERTIES
+        EXTERNAL_OBJECT TRUE
+        GENERATED TRUE
+    )
+    target_sources(dsutil PRIVATE ${_dsutil_asm_objs})
 endif()
 
 # MFC support
