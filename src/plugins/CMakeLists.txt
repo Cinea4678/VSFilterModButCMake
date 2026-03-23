@@ -24,6 +24,7 @@ endif()
 target_link_libraries(vsfiltermod_plugin PRIVATE
     subtitles
     subpic
+    dsutil
     platform
     libpng
     zlib
