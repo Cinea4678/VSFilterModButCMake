@@ -53,7 +53,7 @@ endif()
 include_directories(
     ${CMAKE_SOURCE_DIR}/src/compat
 )
-# The include/ directory contains MSVC-specific headers (stdint.h, etc.)
+# The include/ directory contains project-specific headers (moreuuids.h, Version.h, etc.)
 if(WIN32)
     include_directories(${CMAKE_SOURCE_DIR}/include)
 endif()
