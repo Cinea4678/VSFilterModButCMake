@@ -18,6 +18,17 @@
 #include <thread>
 #include <filesystem>
 
+// Debug trace: only prints when VSFILTERMOD_DEBUG=1 environment variable is set
+static bool vsfiltermod_debug_enabled() {
+    static int enabled = -1;
+    if (enabled < 0) {
+        const char* val = std::getenv("VSFILTERMOD_DEBUG");
+        enabled = (val && val[0] == '1') ? 1 : 0;
+    }
+    return enabled != 0;
+}
+#define VSFILTERMOD_TRACE(...) do { if (vsfiltermod_debug_enabled()) fprintf(stderr, __VA_ARGS__); } while(0)
+
 #include "../subtitles/VobSubFile.h"
 #include "../subtitles/RTS.h"
 #include "../subtitles/SSF.h"
@@ -67,7 +78,7 @@ public:
 
     bool Render(SubPicDesc& dst, REFERENCE_TIME rt, float fps)
     {
-        fprintf(stderr, "[VSFilterMod] Render: rt=%lld, fps=%.3f, provider=%p\n",
+        VSFILTERMOD_TRACE("[VSFilterMod] Render: rt=%lld, fps=%.3f, provider=%p\n",
                 (long long)rt, fps, (void*)(ISubPicProvider*)m_pSubPicProvider);
         if (!m_pSubPicProvider)
             return false;
@@ -76,7 +87,7 @@ public:
 
         if (!m_pSubPicQueue)
         {
-            fprintf(stderr, "[VSFilterMod] Render: creating SubPicQueue, type=%d, size=%dx%d\n",
+            VSFILTERMOD_TRACE("[VSFilterMod] Render: creating SubPicQueue, type=%d, size=%dx%d\n",
                     dst.type, size.cx, size.cy);
             CComPtr<ISubPicAllocator> pAllocator = new CMemSubPicAllocator(
                 dst.type, size, m_script_selected_yuv, m_script_selected_range);
@@ -84,16 +95,16 @@ public:
             HRESULT hr;
             if (!(m_pSubPicQueue = new CSubPicQueueNoThread(pAllocator, &hr)) || FAILED(hr))
             {
-                fprintf(stderr, "[VSFilterMod] Render: SubPicQueue creation failed, hr=0x%08lx\n", (unsigned long)hr);
+                VSFILTERMOD_TRACE("[VSFilterMod] Render: SubPicQueue creation failed, hr=0x%08lx\n", (unsigned long)hr);
                 m_pSubPicQueue = NULL;
                 return false;
             }
-            fprintf(stderr, "[VSFilterMod] Render: SubPicQueue created successfully\n");
+            VSFILTERMOD_TRACE("[VSFilterMod] Render: SubPicQueue created successfully\n");
         }
 
         if (m_SubPicProviderId != (DWORD_PTR)(ISubPicProvider*)m_pSubPicProvider)
         {
-            fprintf(stderr, "[VSFilterMod] Render: setting SubPicProvider\n");
+            VSFILTERMOD_TRACE("[VSFilterMod] Render: setting SubPicProvider\n");
             m_pSubPicQueue->SetSubPicProvider(m_pSubPicProvider);
             m_SubPicProviderId = (DWORD_PTR)(ISubPicProvider*)m_pSubPicProvider;
         }
@@ -146,46 +157,46 @@ public:
         : m_CharSet(CharSet)
     {
         m_fps = fps;
-        fprintf(stderr, "[VSFilterMod] CTextSubFilter: constructor, fps=%.3f\n", fps);
+        VSFILTERMOD_TRACE("[VSFilterMod] CTextSubFilter: constructor, fps=%.3f\n", fps);
         if (!fn.IsEmpty()) Open(fn, CharSet);
-        fprintf(stderr, "[VSFilterMod] CTextSubFilter: constructor done\n");
+        VSFILTERMOD_TRACE("[VSFilterMod] CTextSubFilter: constructor done\n");
     }
 
     int GetCharSet() { return m_CharSet; }
 
     bool Open(CString fn, int CharSet = DEFAULT_CHARSET)
     {
-        fprintf(stderr, "[VSFilterMod] CTextSubFilter::Open: starting\n");
+        VSFILTERMOD_TRACE("[VSFilterMod] CTextSubFilter::Open: starting\n");
         SetFileName(_T(""));
         m_pSubPicProvider = NULL;
 
         if (!m_pSubPicProvider)
         {
-            fprintf(stderr, "[VSFilterMod] CTextSubFilter::Open: trying SSF renderer...\n");
+            VSFILTERMOD_TRACE("[VSFilterMod] CTextSubFilter::Open: trying SSF renderer...\n");
             if (ssf::CRenderer* ssf = new ssf::CRenderer(&m_csSubLock))
             {
                 m_pSubPicProvider = (ISubPicProvider*)ssf;
-                if (ssf->Open(CString(fn))) { SetFileName(fn); fprintf(stderr, "[VSFilterMod] CTextSubFilter::Open: SSF succeeded\n"); }
-                else { m_pSubPicProvider = NULL; fprintf(stderr, "[VSFilterMod] CTextSubFilter::Open: SSF failed\n"); }
+                if (ssf->Open(CString(fn))) { SetFileName(fn); VSFILTERMOD_TRACE("[VSFilterMod] CTextSubFilter::Open: SSF succeeded\n"); }
+                else { m_pSubPicProvider = NULL; VSFILTERMOD_TRACE("[VSFilterMod] CTextSubFilter::Open: SSF failed\n"); }
             }
         }
 
         if (!m_pSubPicProvider)
         {
-            fprintf(stderr, "[VSFilterMod] CTextSubFilter::Open: trying RTS renderer...\n");
+            VSFILTERMOD_TRACE("[VSFilterMod] CTextSubFilter::Open: trying RTS renderer...\n");
             if (CRenderedTextSubtitle* rts = new CRenderedTextSubtitle(&m_csSubLock))
             {
                 m_pSubPicProvider = (ISubPicProvider*)rts;
-                fprintf(stderr, "[VSFilterMod] CTextSubFilter::Open: calling rts->Open()...\n");
-                if (rts->Open(CString(fn), CharSet)) { SetFileName(fn); fprintf(stderr, "[VSFilterMod] CTextSubFilter::Open: RTS succeeded\n"); }
-                else { m_pSubPicProvider = NULL; fprintf(stderr, "[VSFilterMod] CTextSubFilter::Open: RTS failed\n"); }
+                VSFILTERMOD_TRACE("[VSFilterMod] CTextSubFilter::Open: calling rts->Open()...\n");
+                if (rts->Open(CString(fn), CharSet)) { SetFileName(fn); VSFILTERMOD_TRACE("[VSFilterMod] CTextSubFilter::Open: RTS succeeded\n"); }
+                else { m_pSubPicProvider = NULL; VSFILTERMOD_TRACE("[VSFilterMod] CTextSubFilter::Open: RTS failed\n"); }
 
                 m_script_selected_yuv = rts->m_eYCbCrMatrix;
                 m_script_selected_range = rts->m_eYCbCrRange;
             }
         }
 
-        fprintf(stderr, "[VSFilterMod] CTextSubFilter::Open: done, provider=%p\n", (void*)(ISubPicProvider*)m_pSubPicProvider);
+        VSFILTERMOD_TRACE("[VSFilterMod] CTextSubFilter::Open: done, provider=%p\n", (void*)(ISubPicProvider*)m_pSubPicProvider);
         return !!m_pSubPicProvider;
     }
 };
@@ -221,13 +232,13 @@ public:
 
     CAvisynthFilter(PClip c, IScriptEnvironment* env, VFRTranslator *_vfr = 0) : GenericVideoFilter(c), vfr(_vfr)
     {
-        fprintf(stderr, "[VSFilterMod] CAvisynthFilter constructed: %dx%d, fps=%d/%d\n",
+        VSFILTERMOD_TRACE("[VSFilterMod] CAvisynthFilter constructed: %dx%d, fps=%d/%d\n",
                 vi.width, vi.height, vi.fps_numerator, vi.fps_denominator);
     }
 
     PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env)
     {
-        fprintf(stderr, "[VSFilterMod] GetFrame(%d) called\n", n);
+        VSFILTERMOD_TRACE("[VSFilterMod] GetFrame(%d) called\n", n);
         PVideoFrame frame = child->GetFrame(n, env);
 
         env->MakeWritable(&frame);
@@ -248,7 +259,7 @@ public:
             vi.IsYV12() ? (s_fSwapUV ? MSP_IYUV : MSP_YV12) :
             -1;
 
-        fprintf(stderr, "[VSFilterMod] GetFrame(%d): dst type=%d, bpp=%d, %dx%d\n",
+        VSFILTERMOD_TRACE("[VSFilterMod] GetFrame(%d): dst type=%d, bpp=%d, %dx%d\n",
                 n, dst.type, dst.bpp, dst.w, dst.h);
 
         float fps = m_fps > 0 ? m_fps : (float)vi.fps_numerator / vi.fps_denominator;
@@ -260,10 +271,10 @@ public:
         else
             timestamp = (REFERENCE_TIME)(10000000.0 * vfr->TimeStampFromFrameNumber(n));
 
-        fprintf(stderr, "[VSFilterMod] GetFrame(%d): rendering at timestamp=%lld, fps=%.3f\n",
+        VSFILTERMOD_TRACE("[VSFilterMod] GetFrame(%d): rendering at timestamp=%lld, fps=%.3f\n",
                 n, (long long)timestamp, fps);
         Render(dst, timestamp, fps);
-        fprintf(stderr, "[VSFilterMod] GetFrame(%d): render complete\n", n);
+        VSFILTERMOD_TRACE("[VSFilterMod] GetFrame(%d): render complete\n", n);
 
         return frame;
     }
@@ -276,7 +287,7 @@ public:
         : CVobSubFilter(CString(fn))
         , CAvisynthFilter(c, env)
     {
-        fprintf(stderr, "[VSFilterMod] CVobSubAvisynthFilter: opened \"%s\", provider=%p\n",
+        VSFILTERMOD_TRACE("[VSFilterMod] CVobSubAvisynthFilter: opened \"%s\", provider=%p\n",
                 fn, (void*)(ISubPicProvider*)m_pSubPicProvider);
         if (!m_pSubPicProvider)
             env->ThrowError("VobSub: Can't open \"%s\"", fn);
@@ -290,7 +301,7 @@ public:
         : CTextSubFilter(CString(fn), CharSet, fps)
         , CAvisynthFilter(c, env, vfr)
     {
-        fprintf(stderr, "[VSFilterMod] CTextSubAvisynthFilter: opened \"%s\", charset=%d, fps=%.3f, provider=%p\n",
+        VSFILTERMOD_TRACE("[VSFilterMod] CTextSubAvisynthFilter: opened \"%s\", charset=%d, fps=%.3f, provider=%p\n",
                 fn, CharSet, fps, (void*)(ISubPicProvider*)m_pSubPicProvider);
         if (!m_pSubPicProvider)
             env->ThrowError("TextSubMod: Can't open \"%s\"", fn);
@@ -299,21 +310,21 @@ public:
 
 AVSValue __cdecl VobSubCreateS(AVSValue args, void* user_data, IScriptEnvironment* env)
 {
-    fprintf(stderr, "[VSFilterMod] VobSubCreateS: creating filter for \"%s\"\n", args[1].AsString());
+    VSFILTERMOD_TRACE("[VSFilterMod] VobSubCreateS: creating filter for \"%s\"\n", args[1].AsString());
     return(new CVobSubAvisynthFilter(args[0].AsClip(), args[1].AsString(), env));
 }
 
 AVSValue __cdecl TextSubCreateGeneral(AVSValue args, void* user_data, IScriptEnvironment* env)
 {
-    fprintf(stderr, "[VSFilterMod] TextSubCreateGeneral: entering\n");
+    VSFILTERMOD_TRACE("[VSFilterMod] TextSubCreateGeneral: entering\n");
     if (!args[1].Defined())
         env->ThrowError("TextSubMod: You must specify a subtitle file to use");
-    fprintf(stderr, "[VSFilterMod] TextSubCreateGeneral: file=\"%s\"\n", args[1].AsString());
+    VSFILTERMOD_TRACE("[VSFilterMod] TextSubCreateGeneral: file=\"%s\"\n", args[1].AsString());
     VFRTranslator *vfr = 0;
     if (args[4].Defined())
         vfr = GetVFRTranslator(args[4].AsString());
 
-    fprintf(stderr, "[VSFilterMod] TextSubCreateGeneral: creating filter...\n");
+    VSFILTERMOD_TRACE("[VSFilterMod] TextSubCreateGeneral: creating filter...\n");
     return(new CTextSubAvisynthFilter(
                args[0].AsClip(),
                env,
@@ -372,7 +383,7 @@ AVSValue __cdecl MaskSubCreate(AVSValue args, void* user_data, IScriptEnvironmen
 extern "C" __attribute__((visibility("default")))
 const char* AvisynthPluginInit3(IScriptEnvironment* env, const AVS_Linkage* const vectors)
 {
-    fprintf(stderr, "[VSFilterMod] AvisynthPluginInit3: entering, linkage=%p\n", (const void*)vectors);
+    VSFILTERMOD_TRACE("[VSFilterMod] AvisynthPluginInit3: entering, linkage=%p\n", (const void*)vectors);
     AVS_linkage = vectors;
 
     env->AddFunction("VobSub", "cs", VobSubCreateS, 0);
@@ -380,7 +391,7 @@ const char* AvisynthPluginInit3(IScriptEnvironment* env, const AVS_Linkage* cons
     env->AddFunction("TextSubModSwapUV", "b", TextSubSwapUV, 0);
     env->AddFunction("MaskSubMod", "[file]s[width]i[height]i[fps]f[length]i[charset]i[vfr]s", MaskSubCreate, 0);
     env->SetVar(env->SaveString("RGBA"), false);
-    fprintf(stderr, "[VSFilterMod] AvisynthPluginInit3: functions registered successfully\n");
+    VSFILTERMOD_TRACE("[VSFilterMod] AvisynthPluginInit3: functions registered successfully\n");
     return(NULL);
 }
 
