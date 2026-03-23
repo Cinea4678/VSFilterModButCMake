@@ -28,27 +28,74 @@
 #endif
 #include <math.h>
 
+// Compute fixed-point reciprocal: (1 << 16) / divisor, for use as multiply-shift replacement
+// result * x >> 16 ≈ x / divisor
+static inline unsigned int computeReciprocal(int divisor)
+{
+    if (divisor <= 0) return 0;
+    return (unsigned int)((65536U + divisor - 1) / divisor);
+}
+
 // Filter an image in horizontal direction with a one-dimensional filter
 // PixelWidth is the distance in bytes between pixels
 template<ptrdiff_t PixelDist>
 void SeparableFilterX(unsigned char *src, unsigned char *dst, int width, int height, ptrdiff_t stride, int *kernel, int kernel_size, int divisor)
 {
+    unsigned int inv_divisor = computeReciprocal(divisor);
+    int half_k = kernel_size / 2;
 #pragma omp parallel for
     for(int y = 0; y < height; y++)
     {
         unsigned char *in = src + y * stride;
         unsigned char *out = dst + y * stride;
-        for(int x = 0; x < width; x++)
+
+        // Left boundary (x < half_k): needs wrapping
+        for(int x = 0; x < half_k && x < width; x++)
         {
             int accum = 0;
             for(int k = 0; k < kernel_size; k++)
             {
-                int xofs = k - kernel_size / 2;
+                int xofs = k - half_k;
                 if(x + xofs < 0) xofs += width;
                 if(x + xofs >= width) xofs -= width;
                 accum += (int)(in[xofs*PixelDist] * kernel[k]);
             }
-            accum /= divisor;
+            accum = (int)((accum * (unsigned long long)inv_divisor) >> 16);
+            if(accum > 255) accum = 255;
+            if(accum < 0) accum = 0;
+            *out = (unsigned char)accum;
+            in += PixelDist;
+            out += PixelDist;
+        }
+
+        // Center: no boundary checks needed
+        int x_center_end = width - half_k;
+        for(int x = half_k; x < x_center_end; x++)
+        {
+            int accum = 0;
+            for(int k = 0; k < kernel_size; k++)
+            {
+                accum += (int)(in[(k - half_k)*PixelDist] * kernel[k]);
+            }
+            accum = (int)((accum * (unsigned long long)inv_divisor) >> 16);
+            if(accum > 255) accum = 255;
+            *out = (unsigned char)accum;
+            in += PixelDist;
+            out += PixelDist;
+        }
+
+        // Right boundary (x >= width - half_k): needs wrapping
+        for(int x = (x_center_end > half_k ? x_center_end : half_k); x < width; x++)
+        {
+            int accum = 0;
+            for(int k = 0; k < kernel_size; k++)
+            {
+                int xofs = k - half_k;
+                if(x + xofs < 0) xofs += width;
+                if(x + xofs >= width) xofs -= width;
+                accum += (int)(in[xofs*PixelDist] * kernel[k]);
+            }
+            accum = (int)((accum * (unsigned long long)inv_divisor) >> 16);
             if(accum > 255) accum = 255;
             if(accum < 0) accum = 0;
             *out = (unsigned char)accum;
@@ -66,23 +113,62 @@ void SeparableFilterX(unsigned char *src, unsigned char *dst, int width, int hei
 template<ptrdiff_t PixelDist>
 void SeparableFilterY(unsigned char *src, unsigned char *dst, int width, int height, ptrdiff_t stride, int *kernel, int kernel_size, int divisor)
 {
+    unsigned int inv_divisor = computeReciprocal(divisor);
+    int half_k = kernel_size / 2;
     width *= PixelDist;
 #pragma omp parallel for
     for(int  x = 0; x < width; x += PixelDist)
     {
         unsigned char *in = src + x;
         unsigned char *out = dst + x;
-        for(int y = 0; y < height; y++)
+
+        // Top boundary
+        for(int y = 0; y < half_k && y < height; y++)
         {
             int accum = 0;
             for(int k = 0; k < kernel_size; k++)
             {
-                int yofs = k - kernel_size / 2;
+                int yofs = k - half_k;
                 if(y + yofs < 0) yofs += height;
                 if(y + yofs >= height) yofs -= height;
                 accum += (int)(in[yofs*stride] * kernel[k]);
             }
-            accum /= divisor;
+            accum = (int)((accum * (unsigned long long)inv_divisor) >> 16);
+            if(accum > 255) accum = 255;
+            if(accum < 0) accum = 0;
+            *out = (unsigned char)accum;
+            in += stride;
+            out += stride;
+        }
+
+        // Center: no boundary checks
+        int y_center_end = height - half_k;
+        for(int y = half_k; y < y_center_end; y++)
+        {
+            int accum = 0;
+            for(int k = 0; k < kernel_size; k++)
+            {
+                accum += (int)(in[(k - half_k)*stride] * kernel[k]);
+            }
+            accum = (int)((accum * (unsigned long long)inv_divisor) >> 16);
+            if(accum > 255) accum = 255;
+            *out = (unsigned char)accum;
+            in += stride;
+            out += stride;
+        }
+
+        // Bottom boundary
+        for(int y = (y_center_end > half_k ? y_center_end : half_k); y < height; y++)
+        {
+            int accum = 0;
+            for(int k = 0; k < kernel_size; k++)
+            {
+                int yofs = k - half_k;
+                if(y + yofs < 0) yofs += height;
+                if(y + yofs >= height) yofs -= height;
+                accum += (int)(in[yofs*stride] * kernel[k]);
+            }
+            accum = (int)((accum * (unsigned long long)inv_divisor) >> 16);
             if(accum > 255) accum = 255;
             if(accum < 0) accum = 0;
             *out = (unsigned char)accum;

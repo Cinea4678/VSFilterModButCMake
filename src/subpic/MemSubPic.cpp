@@ -439,8 +439,57 @@ STDMETHODIMP CMemSubPic::AlphaBlt(RECT* pSrc, RECT* pDst, SubPicDesc* pTarget)
         {
             BYTE* s2 = s;
             BYTE* s2end = s2 + w * 4;
-
             DWORD* d2 = (DWORD*)d;
+
+#if defined(_WIN64_OR_AARCH64) || defined(_WIN64)
+            // SIMD path: process 4 pixels at a time
+            __m128i zero = _mm_setzero_si128();
+            __m128i ff32 = _mm_set1_epi32(0xFF);
+            BYTE* s2end4 = s2 + ((w & ~3) * 4);
+            for(; s2 < s2end4; s2 += 16, d2 += 4)
+            {
+                __m128i src4 = _mm_loadu_si128((__m128i*)s2);
+
+                // Check if all 4 alphas are 0xFF (fully transparent — no subtitle)
+                __m128i alpha32 = _mm_srli_epi32(src4, 24);
+                __m128i skip_mask = _mm_cmpeq_epi32(alpha32, ff32);
+                int skip_bits = _mm_movemask_epi8(skip_mask);
+                if (skip_bits == (int)0xFFFF) continue;
+
+                __m128i dst4 = _mm_loadu_si128((__m128i*)d2);
+
+                // Pixels 0-1: unpack to 16-bit, broadcast alpha, blend
+                __m128i s_lo = _mm_unpacklo_epi8(src4, zero);
+                __m128i d_lo = _mm_unpacklo_epi8(dst4, zero);
+                __m128i alpha_lo = _mm_shufflelo_epi16(s_lo, _MM_SHUFFLE(3,3,3,3));
+                alpha_lo = _mm_shufflehi_epi16(alpha_lo, _MM_SHUFFLE(3,3,3,3));
+                __m128i r_lo = _mm_srli_epi16(_mm_mullo_epi16(d_lo, alpha_lo), 8);
+                r_lo = _mm_add_epi16(r_lo, s_lo);
+
+                // Pixels 2-3
+                __m128i s_hi = _mm_unpackhi_epi8(src4, zero);
+                __m128i d_hi = _mm_unpackhi_epi8(dst4, zero);
+                __m128i alpha_hi = _mm_shufflelo_epi16(s_hi, _MM_SHUFFLE(3,3,3,3));
+                alpha_hi = _mm_shufflehi_epi16(alpha_hi, _MM_SHUFFLE(3,3,3,3));
+                __m128i r_hi = _mm_srli_epi16(_mm_mullo_epi16(d_hi, alpha_hi), 8);
+                r_hi = _mm_add_epi16(r_hi, s_hi);
+
+                // Pack back to bytes
+                __m128i result = _mm_packus_epi16(r_lo, r_hi);
+
+                // Where alpha==0xFF, keep original dst
+                if (skip_bits != 0)
+                {
+                    result = _mm_or_si128(
+                        _mm_and_si128(skip_mask, dst4),
+                        _mm_andnot_si128(skip_mask, result)
+                    );
+                }
+
+                _mm_storeu_si128((__m128i*)d2, result);
+            }
+#endif
+            // Scalar tail (or full path on 32-bit x86)
             for(; s2 < s2end; s2 += 4, d2++)
             {
                 if(s2[3] < 0xff)

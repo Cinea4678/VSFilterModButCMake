@@ -861,37 +861,47 @@ bool Rasterizer::Rasterize(int xsub, int ysub, int fBlur, double fGaussianBlur)
         }
     }
 
-    // If we're blurring, do a 3x3 box blur
+    // If we're blurring, do a 3x3 box blur using separated [1,2,1]/4 passes
     // Can't do it on subpictures smaller than 3x3 pixels
-    for(int pass = 0; pass < fBlur; pass++)
+    if(fBlur > 0 && mOverlayWidth >= 3 && mOverlayHeight >= 3)
     {
-        if(mOverlayWidth >= 3 && mOverlayHeight >= 3)
+        int pitch = mOverlayWidth * 2;
+        int border = !mWideOutline.empty() ? 1 : 0;
+
+        byte* tmp = DNew byte[pitch * mOverlayHeight];
+        if(!tmp) return(false);
+
+        for(int pass = 0; pass < fBlur; pass++)
         {
-            int pitch = mOverlayWidth * 2;
-
-            byte* tmp = DNew byte[pitch*mOverlayHeight];
-            if(!tmp) return(false);
-
-            memcpy(tmp, mpOverlayBuffer, pitch * mOverlayHeight);
-
-            int border = !mWideOutline.empty() ? 1 : 0;
-
-            // This could be done in a separated way and win some speed
-            for(ptrdiff_t j = 1; j < mOverlayHeight - 1; j++)
+            // Horizontal pass: mpOverlayBuffer → tmp, applying [1,2,1]/4
+            for(ptrdiff_t j = 0; j < mOverlayHeight; j++)
             {
-                byte* src = tmp + pitch * j + 2 + border;
-                byte* dst = mpOverlayBuffer + pitch * j + 2 + border;
-
-                for(ptrdiff_t i = 1; i < mOverlayWidth - 1; i++, src += 2, dst += 2)
+                byte* s = mpOverlayBuffer + pitch * j + border;
+                byte* d = tmp + pitch * j + border;
+                d[0] = s[0];
+                for(ptrdiff_t i = 1; i < mOverlayWidth - 1; i++)
                 {
-                    *dst = (src[-2-pitch] + (src[-pitch] << 1) + src[+2-pitch]
-                            + (src[-2] << 1) + (src[0] << 2) + (src[+2] << 1)
-                            + src[-2+pitch] + (src[+pitch] << 1) + src[+2+pitch]) >> 4;
+                    d[i*2] = ((int)s[(i-1)*2] + ((int)s[i*2] << 1) + (int)s[(i+1)*2]) >> 2;
                 }
+                if(mOverlayWidth > 1)
+                    d[(mOverlayWidth-1)*2] = s[(mOverlayWidth-1)*2];
             }
 
-            delete [] tmp;
+            // Vertical pass: tmp → mpOverlayBuffer, applying [1,2,1]/4
+            for(ptrdiff_t j = 1; j < mOverlayHeight - 1; j++)
+            {
+                byte* sp = tmp + pitch * (j-1) + border;
+                byte* sc = tmp + pitch * j + border;
+                byte* sn = tmp + pitch * (j+1) + border;
+                byte* d = mpOverlayBuffer + pitch * j + border;
+                for(ptrdiff_t i = 1; i < mOverlayWidth - 1; i++)
+                {
+                    d[i*2] = ((int)sp[i*2] + ((int)sc[i*2] << 1) + (int)sn[i*2]) >> 2;
+                }
+            }
         }
+
+        delete [] tmp;
     }
 
     return true;
@@ -1224,72 +1234,152 @@ void Rasterizer::Draw_Alpha_sp_noBody_0(RasterizerNfo& rnfo)
     }
 }//Draw_Alpha_sp_noBody_0(w,h,xo,spd.w,color,spd.pitch,dst,src,sw,am);
 
+// == Batched SSE2 helpers ==
+// Process a single pixel using madd approach, return result as 16-bit in low 64 bits
+static __forceinline __m128i pixmix_madd_one(__m128i dst_pixel_128i, __m128i src_color_16, __m128i blend_factor, __m128i zero)
+{
+    __m128i d = _mm_unpacklo_epi8(dst_pixel_128i, zero);
+    __m128i r = _mm_unpacklo_epi16(d, src_color_16);
+    r = _mm_madd_epi16(r, blend_factor);
+    r = _mm_srli_epi32(r, 8);
+    r = _mm_packs_epi32(r, r);
+    return r; // 16-bit result in low 64 bits
+}
+
+// Blend a run of pixels with a single constant color using batched SIMD.
+// alpha_src points to interleaved [body, border] bytes; body_stride is the byte
+// stride between successive body alpha values (2 for normal overlay).
+// For 'body' rendering, alpha = alpha_src[wt * body_stride].
+// For 'noBody' (border) rendering, caller should pre-subtract and pass the result.
+static __forceinline void pixmix_sse2_row(DWORD* dst, DWORD color, const unsigned char* alpha_src, int body_stride, int w)
+{
+    DWORD colorAlpha = color >> 24;
+    if (colorAlpha == 0) return;
+    DWORD colorRGB = color & 0xffffff;
+
+    __m128i zero = _mm_setzero_si128();
+    __m128i color_16 = _mm_unpacklo_epi8(_mm_cvtsi32_si128(colorRGB), zero);
+
+    int wt = 0;
+    int w4 = w - 3;
+
+    for (; wt < w4; wt += 4)
+    {
+        // Compute 4 alphas
+        DWORD a0 = ((alpha_src[(wt+0)*body_stride] * colorAlpha) >> 6) & 0xff;
+        DWORD a1 = ((alpha_src[(wt+1)*body_stride] * colorAlpha) >> 6) & 0xff;
+        DWORD a2 = ((alpha_src[(wt+2)*body_stride] * colorAlpha) >> 6) & 0xff;
+        DWORD a3 = ((alpha_src[(wt+3)*body_stride] * colorAlpha) >> 6) & 0xff;
+
+        // Skip if all 4 pixels are fully transparent
+        if ((a0 | a1 | a2 | a3) == 0) continue;
+
+        // Load 4 destination pixels
+        __m128i d4 = _mm_loadu_si128((__m128i*)(dst + wt));
+
+        // Process each pixel using madd, then combine
+        __m128i blend0 = _mm_set1_epi32(((a0 + 1) << 16) | (0x100 - a0));
+        __m128i r0 = pixmix_madd_one(_mm_cvtsi32_si128(dst[wt+0]), color_16, blend0, zero);
+
+        __m128i blend1 = _mm_set1_epi32(((a1 + 1) << 16) | (0x100 - a1));
+        __m128i r1 = pixmix_madd_one(_mm_cvtsi32_si128(dst[wt+1]), color_16, blend1, zero);
+
+        __m128i blend2 = _mm_set1_epi32(((a2 + 1) << 16) | (0x100 - a2));
+        __m128i r2 = pixmix_madd_one(_mm_cvtsi32_si128(dst[wt+2]), color_16, blend2, zero);
+
+        __m128i blend3 = _mm_set1_epi32(((a3 + 1) << 16) | (0x100 - a3));
+        __m128i r3 = pixmix_madd_one(_mm_cvtsi32_si128(dst[wt+3]), color_16, blend3, zero);
+
+        // Combine: r0,r1 each have 4x16-bit in low 64 bits
+        __m128i r01 = _mm_unpacklo_epi64(r0, r1);
+        __m128i r23 = _mm_unpacklo_epi64(r2, r3);
+        __m128i result = _mm_packus_epi16(r01, r23);
+        _mm_storeu_si128((__m128i*)(dst + wt), result);
+    }
+
+    // Scalar tail
+    for (; wt < w; ++wt)
+        pixmix_sse2(&dst[wt], color, (DWORD)alpha_src[wt * body_stride]);
+}
+
 // == SSE2 func ==
 void Rasterizer::Draw_noAlpha_spFF_Body_sse2(RasterizerNfo& rnfo)
 {
     int h = rnfo.h;
-    int color = rnfo.color;
+    DWORD color = rnfo.color;
 
-    const DWORD* sw = rnfo.sw;
-    byte* s = rnfo.s;
+    unsigned char* s = rnfo.s;
     DWORD* dst = rnfo.dst;
-    // The <<6 is due to pixmix expecting the alpha parameter to be
-    // the multiplication of two 6-bit unsigned numbers but we
-    // only have one here. (No alpha mask.)
     while(h--)
     {
-        for(int wt = 0; wt < rnfo.w; ++wt)
-            pixmix_sse2(&dst[wt], color, s[wt*2]);
+        pixmix_sse2_row(dst, color, s, 2, rnfo.w);
         s += 2 * rnfo.overlayp;
         dst = (DWORD*)((char *)dst + rnfo.pitch);
     }
-}//Draw_noAlpha_spFF_Body_sse2(w,h,color,spd.pitch,dst,s);
+}
 
 void Rasterizer::Draw_noAlpha_spFF_noBody_sse2(RasterizerNfo& rnfo)
 {
     int h = rnfo.h;
     int color = rnfo.color;
+    DWORD colorAlpha = color >> 24;
+    DWORD colorRGB = color & 0xffffff;
 
-    const DWORD* sw = rnfo.sw;
     byte* src = rnfo.src;
     DWORD* dst = rnfo.dst;
-    // src contains two different bitmaps, interlaced per pixel.
-    // The first stored is the fill, the second is the widened
-    // fill region created by CreateWidenedRegion().
-    // Since we're drawing only the border, we must otain that
-    // by subtracting the fill from the widened region. The
-    // subtraction must be saturating since the widened region
-    // pixel value can be smaller than the fill value.
-    // This happens when blur edges is used.
+
+    __m128i zero = _mm_setzero_si128();
+    __m128i color_16 = _mm_unpacklo_epi8(_mm_cvtsi32_si128(colorRGB), zero);
+
     while(h--)
     {
-        for(int wt = 0; wt < rnfo.w; ++wt)
+        int wt = 0;
+        int w4 = rnfo.w - 3;
+        for (; wt < w4; wt += 4)
+        {
+            DWORD sa0 = safe_subtract_sse2(src[(wt+0)*2+1], src[(wt+0)*2]);
+            DWORD sa1 = safe_subtract_sse2(src[(wt+1)*2+1], src[(wt+1)*2]);
+            DWORD sa2 = safe_subtract_sse2(src[(wt+2)*2+1], src[(wt+2)*2]);
+            DWORD sa3 = safe_subtract_sse2(src[(wt+3)*2+1], src[(wt+3)*2]);
+            DWORD a0 = ((sa0 * colorAlpha) >> 6) & 0xff;
+            DWORD a1 = ((sa1 * colorAlpha) >> 6) & 0xff;
+            DWORD a2 = ((sa2 * colorAlpha) >> 6) & 0xff;
+            DWORD a3 = ((sa3 * colorAlpha) >> 6) & 0xff;
+            if ((a0 | a1 | a2 | a3) == 0) continue;
+
+            __m128i blend0 = _mm_set1_epi32(((a0 + 1) << 16) | (0x100 - a0));
+            __m128i r0 = pixmix_madd_one(_mm_cvtsi32_si128(dst[wt+0]), color_16, blend0, zero);
+            __m128i blend1 = _mm_set1_epi32(((a1 + 1) << 16) | (0x100 - a1));
+            __m128i r1 = pixmix_madd_one(_mm_cvtsi32_si128(dst[wt+1]), color_16, blend1, zero);
+            __m128i blend2 = _mm_set1_epi32(((a2 + 1) << 16) | (0x100 - a2));
+            __m128i r2 = pixmix_madd_one(_mm_cvtsi32_si128(dst[wt+2]), color_16, blend2, zero);
+            __m128i blend3 = _mm_set1_epi32(((a3 + 1) << 16) | (0x100 - a3));
+            __m128i r3 = pixmix_madd_one(_mm_cvtsi32_si128(dst[wt+3]), color_16, blend3, zero);
+
+            __m128i r01 = _mm_unpacklo_epi64(r0, r1);
+            __m128i r23 = _mm_unpacklo_epi64(r2, r3);
+            _mm_storeu_si128((__m128i*)(dst + wt), _mm_packus_epi16(r01, r23));
+        }
+        for (; wt < rnfo.w; ++wt)
             pixmix_sse2(&dst[wt], color, safe_subtract_sse2(src[wt*2+1], src[wt*2]));
         src += 2 * rnfo.overlayp;
-
         dst = (DWORD*)((char *)dst + rnfo.pitch);
     }
-}//Draw_noAlpha_spFF_noBody_sse2(w,h,color,spd.pitch,dst,src);
+}
 
 void Rasterizer::Draw_noAlpha_sp_Body_sse2(RasterizerNfo& rnfo)
 {
     int h = rnfo.h;
+    DWORD color = rnfo.color;
 
-    int color = rnfo.color;
-
-    byte* s = rnfo.s;
+    unsigned char* s = rnfo.s;
     DWORD* dst = rnfo.dst;
-    // xo is the offset (usually negative) we have moved into the image
-    // So if we have passed the switchpoint (?) switch to another colour
-    // (So switchpts stores both colours *and* coordinates?)
     int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
-    int color2 = rnfo.sw[2];
+    DWORD color2 = rnfo.sw[2];
     while(h--)
     {
-        for(int wt = 0; wt < gran; ++wt)
-            pixmix_sse2(&dst[wt], color, s[wt*2]);
-        for(int wt = gran; wt < rnfo.w; ++wt)
-            pixmix_sse2(&dst[wt], color2, s[wt*2]);
+        pixmix_sse2_row(dst, color, s, 2, gran);
+        pixmix_sse2_row(dst + gran, color2, s + gran * 2, 2, rnfo.w - gran);
         s += 2 * rnfo.overlayp;
         dst = (DWORD*)((char *)dst + rnfo.pitch);
     }
@@ -1298,13 +1388,15 @@ void Rasterizer::Draw_noAlpha_sp_Body_sse2(RasterizerNfo& rnfo)
 void Rasterizer::Draw_noAlpha_sp_noBody_sse2(RasterizerNfo& rnfo)
 {
     int h = rnfo.h;
-    int color = rnfo.color;
+    DWORD color = rnfo.color;
+    DWORD colorAlpha = color >> 24;
+    DWORD colorRGB = color & 0xffffff;
 
-
-    byte* src = rnfo.src;
+    unsigned char* src = rnfo.src;
     DWORD* dst = rnfo.dst;
     int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
-    int color2 = rnfo.sw[2];
+    DWORD color2 = rnfo.sw[2];
+
     while(h--)
     {
         for(int wt = 0; wt < gran; ++wt)
@@ -1324,22 +1416,55 @@ void Rasterizer::Draw_Alpha_spFF_Body_sse2(RasterizerNfo& rnfo)
     byte* am = rnfo.am;
 #endif
     int h = rnfo.h;
-    int color = rnfo.color;
+    DWORD color = rnfo.color;
+    DWORD colorAlpha = color >> 24;
+    DWORD colorRGB = color & 0xffffff;
 
     byte* s = rnfo.s;
     DWORD* dst = rnfo.dst;
-    // Both s and am contain 6-bit bitmaps of two different
-    // alpha masks; s is the subtitle shape and am is the
-    // clipping mask.
-    // Multiplying them together yields a 12-bit number.
-    // I think some imprecision is introduced here??
+
+    __m128i zero = _mm_setzero_si128();
+    __m128i color_16 = _mm_unpacklo_epi8(_mm_cvtsi32_si128(colorRGB), zero);
+
     while(h--)
     {
-        for(int wt = 0; wt < rnfo.w; ++wt)
-#ifdef _VSMOD // patch m006. moveable vector clip
+        int wt = 0;
+        int w4 = rnfo.w - 3;
+        for (; wt < w4; wt += 4)
+        {
+#ifdef _VSMOD
+            DWORD a0 = ((s[(wt+0)*2] * mod_vc.GetAlphaValue(wt+0, h) * colorAlpha) >> 12) & 0xff;
+            DWORD a1 = ((s[(wt+1)*2] * mod_vc.GetAlphaValue(wt+1, h) * colorAlpha) >> 12) & 0xff;
+            DWORD a2 = ((s[(wt+2)*2] * mod_vc.GetAlphaValue(wt+2, h) * colorAlpha) >> 12) & 0xff;
+            DWORD a3 = ((s[(wt+3)*2] * mod_vc.GetAlphaValue(wt+3, h) * colorAlpha) >> 12) & 0xff;
+#else
+            DWORD a0 = ((s[(wt+0)*2] * am[wt+0] * colorAlpha) >> 12) & 0xff;
+            DWORD a1 = ((s[(wt+1)*2] * am[wt+1] * colorAlpha) >> 12) & 0xff;
+            DWORD a2 = ((s[(wt+2)*2] * am[wt+2] * colorAlpha) >> 12) & 0xff;
+            DWORD a3 = ((s[(wt+3)*2] * am[wt+3] * colorAlpha) >> 12) & 0xff;
+#endif
+            if ((a0 | a1 | a2 | a3) == 0) continue;
+
+            __m128i blend0 = _mm_set1_epi32(((a0 + 1) << 16) | (0x100 - a0));
+            __m128i r0 = pixmix_madd_one(_mm_cvtsi32_si128(dst[wt+0]), color_16, blend0, zero);
+            __m128i blend1 = _mm_set1_epi32(((a1 + 1) << 16) | (0x100 - a1));
+            __m128i r1 = pixmix_madd_one(_mm_cvtsi32_si128(dst[wt+1]), color_16, blend1, zero);
+            __m128i blend2 = _mm_set1_epi32(((a2 + 1) << 16) | (0x100 - a2));
+            __m128i r2 = pixmix_madd_one(_mm_cvtsi32_si128(dst[wt+2]), color_16, blend2, zero);
+            __m128i blend3 = _mm_set1_epi32(((a3 + 1) << 16) | (0x100 - a3));
+            __m128i r3 = pixmix_madd_one(_mm_cvtsi32_si128(dst[wt+3]), color_16, blend3, zero);
+
+            __m128i r01 = _mm_unpacklo_epi64(r0, r1);
+            __m128i r23 = _mm_unpacklo_epi64(r2, r3);
+            _mm_storeu_si128((__m128i*)(dst + wt), _mm_packus_epi16(r01, r23));
+        }
+        for (; wt < rnfo.w; ++wt)
+#ifdef _VSMOD
             pixmix2_sse2(&dst[wt], color, s[wt*2], mod_vc.GetAlphaValue(wt, h));
 #else
             pixmix2_sse2(&dst[wt], color, s[wt*2], am[wt]);
+#endif
+#ifndef _VSMOD
         am += rnfo.spdw;
 #endif
         s += 2 * rnfo.overlayp;
@@ -1355,18 +1480,59 @@ void Rasterizer::Draw_Alpha_spFF_noBody_sse2(RasterizerNfo& rnfo)
     byte* am = rnfo.am;
 #endif
     int h = rnfo.h;
-    int color = rnfo.color;
+    DWORD color = rnfo.color;
+    DWORD colorAlpha = color >> 24;
+    DWORD colorRGB = color & 0xffffff;
 
     byte* src = rnfo.src;
     DWORD* dst = rnfo.dst;
 
+    __m128i zero = _mm_setzero_si128();
+    __m128i color_16 = _mm_unpacklo_epi8(_mm_cvtsi32_si128(colorRGB), zero);
+
     while(h--)
     {
-        for(int wt = 0; wt < rnfo.w; ++wt)
-#ifdef _VSMOD // patch m006. moveable vector clip
+        int wt = 0;
+        int w4 = rnfo.w - 3;
+        for (; wt < w4; wt += 4)
+        {
+            DWORD sa0 = safe_subtract_sse2(src[(wt+0)*2+1], src[(wt+0)*2]);
+            DWORD sa1 = safe_subtract_sse2(src[(wt+1)*2+1], src[(wt+1)*2]);
+            DWORD sa2 = safe_subtract_sse2(src[(wt+2)*2+1], src[(wt+2)*2]);
+            DWORD sa3 = safe_subtract_sse2(src[(wt+3)*2+1], src[(wt+3)*2]);
+#ifdef _VSMOD
+            DWORD a0 = ((sa0 * mod_vc.GetAlphaValue(wt+0, h) * colorAlpha) >> 12) & 0xff;
+            DWORD a1 = ((sa1 * mod_vc.GetAlphaValue(wt+1, h) * colorAlpha) >> 12) & 0xff;
+            DWORD a2 = ((sa2 * mod_vc.GetAlphaValue(wt+2, h) * colorAlpha) >> 12) & 0xff;
+            DWORD a3 = ((sa3 * mod_vc.GetAlphaValue(wt+3, h) * colorAlpha) >> 12) & 0xff;
+#else
+            DWORD a0 = ((sa0 * am[wt+0] * colorAlpha) >> 12) & 0xff;
+            DWORD a1 = ((sa1 * am[wt+1] * colorAlpha) >> 12) & 0xff;
+            DWORD a2 = ((sa2 * am[wt+2] * colorAlpha) >> 12) & 0xff;
+            DWORD a3 = ((sa3 * am[wt+3] * colorAlpha) >> 12) & 0xff;
+#endif
+            if ((a0 | a1 | a2 | a3) == 0) continue;
+
+            __m128i blend0 = _mm_set1_epi32(((a0 + 1) << 16) | (0x100 - a0));
+            __m128i r0 = pixmix_madd_one(_mm_cvtsi32_si128(dst[wt+0]), color_16, blend0, zero);
+            __m128i blend1 = _mm_set1_epi32(((a1 + 1) << 16) | (0x100 - a1));
+            __m128i r1 = pixmix_madd_one(_mm_cvtsi32_si128(dst[wt+1]), color_16, blend1, zero);
+            __m128i blend2 = _mm_set1_epi32(((a2 + 1) << 16) | (0x100 - a2));
+            __m128i r2 = pixmix_madd_one(_mm_cvtsi32_si128(dst[wt+2]), color_16, blend2, zero);
+            __m128i blend3 = _mm_set1_epi32(((a3 + 1) << 16) | (0x100 - a3));
+            __m128i r3 = pixmix_madd_one(_mm_cvtsi32_si128(dst[wt+3]), color_16, blend3, zero);
+
+            __m128i r01 = _mm_unpacklo_epi64(r0, r1);
+            __m128i r23 = _mm_unpacklo_epi64(r2, r3);
+            _mm_storeu_si128((__m128i*)(dst + wt), _mm_packus_epi16(r01, r23));
+        }
+        for (; wt < rnfo.w; ++wt)
+#ifdef _VSMOD
             pixmix2_sse2(&dst[wt], color, safe_subtract_sse2(src[wt*2+1], src[wt*2]), mod_vc.GetAlphaValue(wt, h));
 #else
             pixmix2_sse2(&dst[wt], color, safe_subtract_sse2(src[wt*2+1], src[wt*2]), am[wt]);
+#endif
+#ifndef _VSMOD
         am += rnfo.spdw;
 #endif
         src += 2 * rnfo.overlayp;
@@ -1383,7 +1549,6 @@ void Rasterizer::Draw_Alpha_sp_Body_sse2(RasterizerNfo& rnfo)
 #endif
     int h = rnfo.h;
     int color = rnfo.color;
-
 
     byte* s = rnfo.s;
     DWORD* dst = rnfo.dst;
@@ -1623,7 +1788,6 @@ void Rasterizer::Draw_Grad_Alpha_sp_noBody_0(RasterizerNfo& rnfo)
 // == SSE2 func ==
 void Rasterizer::Draw_Grad_noAlpha_spFF_Body_sse2(RasterizerNfo& rnfo)
 {
-    double hfull = (double)rnfo.h;
     MOD_GRADIENT mod_grad = rnfo.mod_grad;
     int typ = rnfo.typ;
 
@@ -1632,10 +1796,15 @@ void Rasterizer::Draw_Grad_noAlpha_spFF_Body_sse2(RasterizerNfo& rnfo)
 
     int h = rnfo.h;
     int w = rnfo.w;
+    __m128i zero = _mm_setzero_si128();
     while(h--)
     {
         for(int wt = 0; wt < w; ++wt)
-            pixmix_sse2(&dst[wt], mod_grad.getmixcolor(wt, h, typ), s[wt*2]);
+        {
+            DWORD alpha = s[wt*2];
+            if (alpha == 0) continue;
+            pixmix_sse2(&dst[wt], mod_grad.getmixcolor(wt, h, typ), alpha);
+        }
         s += 2 * rnfo.overlayp;
         dst = (DWORD*)((char *)dst + rnfo.pitch);
     }
@@ -1643,7 +1812,6 @@ void Rasterizer::Draw_Grad_noAlpha_spFF_Body_sse2(RasterizerNfo& rnfo)
 
 void Rasterizer::Draw_Grad_noAlpha_spFF_noBody_sse2(RasterizerNfo& rnfo)
 {
-    double hfull = (double)rnfo.h;
     MOD_GRADIENT mod_grad = rnfo.mod_grad;
     int typ = rnfo.typ;
 
@@ -1655,9 +1823,12 @@ void Rasterizer::Draw_Grad_noAlpha_spFF_noBody_sse2(RasterizerNfo& rnfo)
     while(h--)
     {
         for(int wt = 0; wt < w; ++wt)
-            pixmix_sse2(&dst[wt], mod_grad.getmixcolor(wt, h, typ), safe_subtract_sse2(src[wt*2+1], src[wt*2]));
+        {
+            DWORD sa = safe_subtract_sse2(src[wt*2+1], src[wt*2]);
+            if (sa == 0) continue;
+            pixmix_sse2(&dst[wt], mod_grad.getmixcolor(wt, h, typ), sa);
+        }
         src += 2 * rnfo.overlayp;
-
         dst = (DWORD*)((char *)dst + rnfo.pitch);
     }
 }
