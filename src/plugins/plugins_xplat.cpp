@@ -5,6 +5,9 @@
 #include "stdafx.h"
 #else
 #include "../compat/compat.h"
+#define DNew new
+#endif
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -14,8 +17,6 @@
 #include <mutex>
 #include <thread>
 #include <filesystem>
-#define DNew new
-#endif
 
 #include "../subtitles/VobSubFile.h"
 #include "../subtitles/RTS.h"
