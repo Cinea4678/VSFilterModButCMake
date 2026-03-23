@@ -24,11 +24,17 @@ endif()
 target_link_libraries(vsfiltermod_plugin PRIVATE
     subtitles
     subpic
-    dsutil
     platform
     libpng
     zlib
 )
+
+# On Windows, dsutil provides symbols used by subtitles (CFileGetStatus,
+# ISO6392ToLcid, g_cpuid etc). On non-Windows these are either #ifdef'd
+# out at call sites or provided by compat stubs.
+if(WIN32)
+    target_link_libraries(vsfiltermod_plugin PRIVATE dsutil)
+endif()
 
 target_compile_definitions(vsfiltermod_plugin PRIVATE
     _VSMOD

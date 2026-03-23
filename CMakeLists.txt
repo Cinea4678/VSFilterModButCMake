@@ -79,9 +79,19 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
     include_directories(${sse2neon_SOURCE_DIR})
 endif()
 
-# Build libraries
+# Build third-party libraries
 add_subdirectory(src/zlib)
 add_subdirectory(src/libpng)
+
+# Windows DirectShow support libraries
+# Must be defined before subtitles/subpic/plugins which conditionally link them
+if(VSFILTERMOD_BUILD_DIRECTSHOW)
+    add_subdirectory(src/BaseClasses)
+    add_subdirectory(src/dsutil)
+    add_subdirectory(src/basevideofilter)
+endif()
+
+# Core libraries
 add_subdirectory(src/subtitles)
 add_subdirectory(src/subpic)
 add_subdirectory(src/platform)
@@ -89,9 +99,7 @@ add_subdirectory(src/platform)
 # Cross-platform VapourSynth/AviSynth plugin
 add_subdirectory(src/plugins)
 
+# Windows DirectShow filter
 if(VSFILTERMOD_BUILD_DIRECTSHOW)
-    add_subdirectory(src/BaseClasses)
-    add_subdirectory(src/dsutil)
-    add_subdirectory(src/basevideofilter)
     add_subdirectory(src/vsfilter)
 endif()
