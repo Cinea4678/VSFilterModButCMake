@@ -32,19 +32,15 @@ target_compile_definitions(dsutil PRIVATE
 
 # Assembly files - Windows Win32 only (all 3 asm files use 32-bit MASM syntax
 # and are ExcludedFromBuild on x64 in the original vcxproj)
+# Note: enable_language(ASM_MASM) is in the root CMakeLists.txt so the VS
+# generator sees it at project level before any targets are defined.
 if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 4)
-    enable_language(ASM_MASM)
-    set_source_files_properties(a_yuv2rgb.asm PROPERTIES
+    set_source_files_properties(a_yuv2rgb.asm convert_a.asm PROPERTIES
         LANGUAGE ASM_MASM
-        COMPILE_FLAGS "/safeseh /c /coff /Cx /nologo"
+        COMPILE_FLAGS "/safeseh"
     )
     set_source_files_properties(a_yuvtable.asm PROPERTIES
         LANGUAGE ASM_MASM
-        COMPILE_FLAGS "/c /coff /Cx /nologo"
-    )
-    set_source_files_properties(convert_a.asm PROPERTIES
-        LANGUAGE ASM_MASM
-        COMPILE_FLAGS "/safeseh /c /coff /Cx /nologo"
     )
     target_sources(dsutil PRIVATE a_yuv2rgb.asm a_yuvtable.asm convert_a.asm)
 endif()
