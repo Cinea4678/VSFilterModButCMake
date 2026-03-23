@@ -25,6 +25,9 @@
 //
 
 #pragma once
+
+#ifdef _WIN32
+
 #include "..\..\DSUtil\SharedInclude.h"
 
 // Modify the following defines if you have to target a platform prior to the ones specified below.
@@ -33,7 +36,7 @@
 #define WINVER			0x0600
 #endif
 
-#ifndef _WIN32_WINNT		// Allow use of features specific to Windows XP or later.                   
+#ifndef _WIN32_WINNT		// Allow use of features specific to Windows XP or later.
 #define _WIN32_WINNT 0x0501	// Change this to the appropriate value to target other versions of Windows.
 #endif
 
@@ -52,6 +55,7 @@
 #define VC_EXTRALEAN		// Exclude rarely-used stuff from Windows headers
 #endif
 
+#include <cstdint>
 #include <afx.h>
 #include <afxwin.h>         // MFC core and standard components
 #include <atlcoll.h>         // MFC core and standard components
@@ -67,3 +71,31 @@
 
 #define _USE_MATH_DEFINES
 #include <math.h>
+
+#else // !_WIN32
+
+#include "../../compat/compat.h"
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <algorithm>
+#include <string>
+#include <vector>
+#include <list>
+#include <map>
+#include <memory>
+
+#define _USE_MATH_DEFINES
+#include <cmath>
+
+#ifdef __SSE2__
+#include <xmmintrin.h>
+#include <emmintrin.h>
+#elif defined(__aarch64__)
+#include "sse2neon.h"
+#endif
+
+// DNew macro (no-op on non-Windows)
+#define DNew new
+
+#endif // _WIN32

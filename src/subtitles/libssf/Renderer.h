@@ -37,7 +37,7 @@ protected:
 public:
     Cache(size_t limit)
     {
-        m_limit = max(1, limit);
+        m_limit = max((size_t)1, limit);
     }
     virtual ~Cache()
     {
@@ -54,7 +54,7 @@ public:
 
     void Add(const CStringW& key, T& obj, bool fFlush = true)
     {
-        if(StringMapW<T>::CPair* p = m_key2obj.Lookup(key)) delete p->m_value;
+        if(typename StringMapW<T>::CPair* p = m_key2obj.Lookup(key)) delete p->m_value;
         else m_objs.AddTail(key);
 
         m_key2obj[key] = obj;

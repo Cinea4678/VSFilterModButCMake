@@ -453,7 +453,7 @@ RenderedSubtitle* Renderer::Lookup(const Subtitle* s, const CSize& vs, const CRe
             if(gpos) r->width += g->spacing;
             r->ascent = max(r->ascent, g->ascent);
             r->descent = max(r->descent, g->descent);
-            r->border = max(r->border, g->GetBackgroundSize());
+            r->border = max(r->border, (int)g->GetBackgroundSize());
         }
 
         for(POSITION gpos = r->GetHeadPosition(); gpos; r->GetNext(gpos))
@@ -761,7 +761,7 @@ FontWrapper* FontCache::Create(HDC hDC, const LOGFONT& lf)
     CStringW key;
 
     key.Format(L"%s,%d,%d,%d",
-               CStringW(lf.lfFaceName), lf.lfHeight, lf.lfWeight,
+               (LPCWSTR)CStringW(lf.lfFaceName), lf.lfHeight, lf.lfWeight,
                ((lf.lfItalic & 1) << 2) | ((lf.lfUnderline & 1) << 1) | ((lf.lfStrikeOut & 1) << 0));
 
     FontWrapper* pFW = NULL;

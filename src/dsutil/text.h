@@ -1,6 +1,8 @@
 #pragma once
 
+#ifdef _WIN32
 #include <atlcoll.h>
+#endif
 
 // extern CString ExplodeMin(CString str, CAtlList<CString>& sl, TCHAR sep, int limit = 0);
 // extern CString Explode(CString str, CAtlList<CString>& sl, TCHAR sep, int limit = 0);
@@ -58,6 +60,7 @@ T Implode(CAtlList<T>& sl, SEP sep)
     return(ret);
 }
 
+#ifdef _WIN32
 extern CString ExtractTag(CString tag, CMapStringToString& attribs, bool& fClosing);
 extern CStringA ConvertMBCS(CStringA str, DWORD SrcCharSet, DWORD DstCharSet);
 extern CStringA UrlEncode(CStringA str, bool fRaw = false);
@@ -66,4 +69,5 @@ extern DWORD CharSetToCodePage(DWORD dwCharSet);
 extern CAtlList<CString>& MakeLower(CAtlList<CString>& sl);
 extern CAtlList<CString>& MakeUpper(CAtlList<CString>& sl);
 extern CAtlList<CString>& RemoveStrings(CAtlList<CString>& sl, int minlen, int maxlen);
+#endif
 

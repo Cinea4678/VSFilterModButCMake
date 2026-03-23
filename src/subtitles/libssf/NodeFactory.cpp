@@ -120,12 +120,12 @@ Definition* NodeFactory::CreateDef(Reference* pParentRef, CStringW type, CString
         {
             if(!pDef->m_predefined)
             {
-                throw Exception(_T("redefinition of '%s' is not allowed"), CString(name));
+                throw Exception(_T("redefinition of '%s' is not allowed"), (LPCTSTR)CString(name));
             }
 
             if(!pDef->IsTypeUnknown() && !pDef->IsType(type))
             {
-                throw Exception(_T("cannot redefine type of %s to %s"), CString(name), CString(type));
+                throw Exception(_T("cannot redefine type of %s to %s"), (LPCTSTR)CString(name), (LPCTSTR)CString(type));
             }
         }
     }

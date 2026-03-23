@@ -34,12 +34,12 @@ public:
     }
     StringMap& operator = (const StringMap& s2t)
     {
-        RemoveAll();
+        this->RemoveAll();
         POSITION pos = s2t.GetStartPosition();
         while(pos)
         {
-            const StringMap::CPair* p = s2t.GetNext(pos);
-            SetAt(p->m_key, p->m_value);
+            const typename CAtlMap<S, T, CStringElementTraits<S>>::CPair* p = s2t.GetNext(pos);
+            this->SetAt(p->m_key, p->m_value);
         }
         return *this;
     }

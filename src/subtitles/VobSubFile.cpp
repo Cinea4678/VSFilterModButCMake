@@ -20,10 +20,17 @@
  */
 
 #include "stdafx.h"
+#ifdef _WIN32
 #include <winioctl.h>
+#include <unrar/unrar.h>
+#else
+// unrar functionality not available on non-Windows
+#endif
 #include "TextFile.h"
-#include <unrar\unrar.h>
 #include "VobSubFile.h"
+#ifndef _WIN32
+#include "../dsutil/text.h"
+#endif
 
 //
 
@@ -256,7 +263,7 @@ bool CVobSubFile::Copy(CVobSubFile& vsf)
                 k += size, sizeleft -= size)
             {
                 int hsize = buff[0x16] + 0x18 + ((buff[0x15] & 0x80) ? 4 : 0);
-                size = min(sizeleft, 2048 - hsize);
+                size = min(sizeleft, (ptrdiff_t)(2048 - hsize));
 
                 if(size != sizeleft)
                 {
@@ -730,6 +737,7 @@ bool CVobSubFile::ReadSub(CString fn)
     return(true);
 }
 
+#ifdef _WIN32
 static unsigned char* RARbuff = NULL;
 static unsigned int RARpos = 0;
 
@@ -839,6 +847,9 @@ bool CVobSubFile::ReadRar(CString fn)
 
     return(true);
 }
+#else // !_WIN32
+bool CVobSubFile::ReadRar(CString fn) { return false; }
+#endif
 
 #define ReadBEdw(var) \
     f.Read(&((BYTE*)&var)[3], 1); \
@@ -879,9 +890,9 @@ bool CVobSubFile::ReadIfo(CString fn)
 
         y = (y - 16) * 255 / 219;
 
-        m_orgpal[i].rgbRed = (BYTE)min(max(1.0 * y + 1.4022 * (u - 128), 0), 255);
-        m_orgpal[i].rgbGreen = (BYTE)min(max(1.0 * y - 0.3456 * (u - 128) - 0.7145 * (v - 128), 0), 255);
-        m_orgpal[i].rgbBlue = (BYTE)min(max(1.0 * y + 1.7710 * (v - 128), 0) , 255);
+        m_orgpal[i].rgbRed = (BYTE)min(max(1.0 * y + 1.4022 * (u - 128), 0.0), 255.0);
+        m_orgpal[i].rgbGreen = (BYTE)min(max(1.0 * y - 0.3456 * (u - 128) - 0.7145 * (v - 128), 0.0), 255.0);
+        m_orgpal[i].rgbBlue = (BYTE)min(max(1.0 * y + 1.7710 * (v - 128), 0.0) , 255.0);
     }
 
     return(true);
@@ -1254,13 +1265,13 @@ STDMETHODIMP_(POSITION) CVobSubFile::GetNext(POSITION pos)
 STDMETHODIMP_(REFERENCE_TIME) CVobSubFile::GetStart(POSITION pos, double fps)
 {
     int i = (int)pos - 1;
-    return(GetFrame(i) ? 10000i64 * m_img.start : 0);
+    return(GetFrame(i) ? 10000LL * m_img.start : 0);
 }
 
 STDMETHODIMP_(REFERENCE_TIME) CVobSubFile::GetStop(POSITION pos, double fps)
 {
     int i = (int)pos - 1;
-    return(GetFrame(i) ? 10000i64 * (m_img.start + m_img.delay) : 0);
+    return(GetFrame(i) ? 10000LL * (m_img.start + m_img.delay) : 0);
 }
 
 STDMETHODIMP_(bool) CVobSubFile::IsAnimated(POSITION pos)
@@ -1287,7 +1298,12 @@ STDMETHODIMP CVobSubFile::Render(SubPicDesc& spd, REFERENCE_TIME rt, double fps,
 
 STDMETHODIMP CVobSubFile::GetClassID(CLSID* pClassID)
 {
+#ifdef _WIN32
     return pClassID ? *pClassID = __uuidof(this), S_OK : E_POINTER;
+#else
+    if (pClassID) memset(pClassID, 0, sizeof(CLSID));
+    return pClassID ? S_OK : E_POINTER;
+#endif
 }
 
 // ISubStream
@@ -1360,8 +1376,10 @@ STDMETHODIMP CVobSubFile::SetStream(int iStream)
 
 STDMETHODIMP CVobSubFile::Reload()
 {
+#ifdef _WIN32
     CFileStatus s;
     if(!CFile::GetStatus(m_title + _T(".idx"), s)) return E_FAIL;
+#endif
     return !m_title.IsEmpty() && Open(m_title) ? S_OK : E_FAIL;
 }
 
@@ -1604,7 +1622,7 @@ HRESULT CVobSubSettings::Render(SubPicDesc& spd, RECT& bbox)
     rts.m_dstScreenSize.SetSize(m_size.cx, m_size.cy);
     CStringW assstr;
     m_img.Polygonize(assstr, false);
-    REFERENCE_TIME rtStart = 10000i64*m_img.start, rtStop = 10000i64*(m_img.start+m_img.delay);
+    REFERENCE_TIME rtStart = 10000LL*m_img.start, rtStop = 10000LL*(m_img.start+m_img.delay);
     rts.Add(assstr, true, rtStart, rtStop);
     rts.Render(spd, (rtStart+rtStop)/2, 25, r);
     */
@@ -1615,6 +1633,7 @@ HRESULT CVobSubSettings::Render(SubPicDesc& spd, RECT& bbox)
 
 /////////////////////////////////////////////////////////
 
+#ifdef _WIN32
 static bool CompressFile(CString fn)
 {
     if(GetVersion() < 0)
@@ -1633,12 +1652,14 @@ static bool CompressFile(CString fn)
 
     return(!!b);
 }
+#endif
 
 bool CVobSubFile::SaveVobSub(CString fn)
 {
     return WriteIdx(fn + _T(".idx")) && WriteSub(fn + _T(".sub"));
 }
 
+#ifdef _WIN32
 bool CVobSubFile::SaveWinSubMux(CString fn)
 {
     TrimExtension(fn);
@@ -2272,6 +2293,11 @@ bool CVobSubFile::SaveMaestro(CString fn)
 
     return(true);
 }
+#else // !_WIN32
+bool CVobSubFile::SaveWinSubMux(CString fn) { return false; }
+bool CVobSubFile::SaveScenarist(CString fn) { return false; }
+bool CVobSubFile::SaveMaestro(CString fn) { return false; }
+#endif
 
 //
 // CVobSubStream
@@ -2375,7 +2401,7 @@ void CVobSubStream::Add(REFERENCE_TIME tStart, REFERENCE_TIME tStop, BYTE* pData
 
     CAutoPtr<SubPic> p(DNew SubPic());
     p->tStart = tStart;
-    p->tStop = vsi.delay > 0 ? (tStart + 10000i64 * vsi.delay) : tStop;
+    p->tStop = vsi.delay > 0 ? (tStart + 10000LL * vsi.delay) : tStop;
     p->pData.SetCount(len);
     memcpy(p->pData.GetData(), pData, p->pData.GetCount());
 
@@ -2479,7 +2505,12 @@ STDMETHODIMP CVobSubStream::Render(SubPicDesc& spd, REFERENCE_TIME rt, double fp
 
 STDMETHODIMP CVobSubStream::GetClassID(CLSID* pClassID)
 {
+#ifdef _WIN32
     return pClassID ? *pClassID = __uuidof(this), S_OK : E_POINTER;
+#else
+    if (pClassID) memset(pClassID, 0, sizeof(CLSID));
+    return pClassID ? S_OK : E_POINTER;
+#endif
 }
 
 // ISubStream

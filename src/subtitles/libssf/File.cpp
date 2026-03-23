@@ -44,7 +44,8 @@ void File::Parse(InputStream& s, LPCWSTR predef)
 
     try
     {
-        ParseDefs(WCharInputStream(predef), pRef);
+        WCharInputStream wis(predef);
+        ParseDefs(wis, pRef);
     }
     catch(Exception& e)
     {
@@ -133,7 +134,7 @@ void File::ParseTypes(InputStream& s, CAtlList<CStringW>& types)
         if(c == '.')
         {
             if(str.IsEmpty()) s.ThrowError(_T("'type' cannot be an empty string"));
-            if(!iswcsym(s.PeekChar())) s.ThrowError(_T("unexpected dot after type '%s'"), CString(str));
+            if(!iswcsym(s.PeekChar())) s.ThrowError(_T("unexpected dot after type '%s'"), (LPCTSTR)CString(str));
 
             types.AddTail(str);
             str.Empty();
@@ -197,7 +198,7 @@ void File::ParseNumber(InputStream& s, Definition* pDef)
     {
         if((c == '+' || c == '-') && !v.IsEmpty()
            || (c == '.' && (v.IsEmpty() || v.Find('.') >= 0 || v.Find('x') >= 0))
-           || (c == 'x' && v != '0')
+           || (c == 'x' && v != L"0")
            || (c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') && v.Find(L"0x") != 0
            || (c == ':' && v.IsEmpty()))
         {
@@ -270,9 +271,9 @@ void File::ParseRefs(InputStream& s, Definition* pParentDef, LPCWSTR term)
             // TODO: allow spec references: parent.<type>, self.<type>, child.<type>
 
             Definition* pDef = GetDefByName(str);
-            if(!pDef) s.ThrowError(_T("cannot find definition of '%s'"), CString(str));
+            if(!pDef) s.ThrowError(_T("cannot find definition of '%s'"), (LPCTSTR)CString(str));
 
-            if(!pParentDef->IsVisible(pDef)) s.ThrowError(_T("cannot access '%s' from here"), CString(str));
+            if(!pParentDef->IsVisible(pDef)) s.ThrowError(_T("cannot access '%s' from here"), (LPCTSTR)CString(str));
 
             pParentDef->AddTail(pDef);
         }

@@ -213,7 +213,7 @@ void Rasterizer::_EvaluateLine(int x0, int y0, int x1, int y1)
 
         if(iy <= y1)
         {
-            __int64 invslope = (__int64(x1 - x0) << 16) / dy;
+            __int64 invslope = (((__int64)(x1 - x0)) << 16) / dy;
 
             while(mEdgeNext + y1 + 1 - iy > mEdgeHeapSize)
                 _ReallocEdgeBuffer(mEdgeHeapSize * 2);
@@ -248,7 +248,7 @@ void Rasterizer::_EvaluateLine(int x0, int y0, int x1, int y1)
 
         if(iy <= y0)
         {
-            __int64 invslope = (__int64(x0 - x1) << 16) / dy;
+            __int64 invslope = (((__int64)(x0 - x1)) << 16) / dy;
 
             while(mEdgeNext + y0 + 1 - iy > mEdgeHeapSize)
                 _ReallocEdgeBuffer(mEdgeHeapSize * 2);
@@ -362,6 +362,43 @@ bool Rasterizer::PartialEndPath(HDC hdc, long dx, long dy)
 
     return false;
 }
+
+#ifndef _WIN32
+bool Rasterizer::SetPathData(const POINT* points, const BYTE* types, int count)
+{
+    _TrashPath();
+    if (count <= 0) return true;
+
+    mpPathTypes = (BYTE*)malloc(sizeof(BYTE) * count);
+    mpPathPoints = (POINT*)malloc(sizeof(POINT) * count);
+    if (!mpPathTypes || !mpPathPoints) return false;
+
+    memcpy(mpPathTypes, types, sizeof(BYTE) * count);
+    memcpy(mpPathPoints, points, sizeof(POINT) * count);
+    mPathPoints = count;
+    return true;
+}
+
+bool Rasterizer::AppendPathData(const POINT* points, const BYTE* types, int count, long dx, long dy)
+{
+    if (count <= 0) return true;
+
+    BYTE* pNewTypes = (BYTE*)realloc(mpPathTypes, (mPathPoints + count) * sizeof(BYTE));
+    POINT* pNewPoints = (POINT*)realloc(mpPathPoints, (mPathPoints + count) * sizeof(POINT));
+    if (!pNewTypes || !pNewPoints) return false;
+
+    mpPathTypes = pNewTypes;
+    mpPathPoints = pNewPoints;
+
+    for (int i = 0; i < count; ++i) {
+        mpPathPoints[mPathPoints + i].x = points[i].x + dx;
+        mpPathPoints[mPathPoints + i].y = points[i].y + dy;
+        mpPathTypes[mPathPoints + i] = types[i];
+    }
+    mPathPoints += count;
+    return true;
+}
+#endif
 
 bool Rasterizer::ScanConvert()
 {
@@ -538,7 +575,7 @@ bool Rasterizer::ScanConvert()
                 x2 = (x >> 1);
 
                 if(x2 > x1)
-                    mOutline.push_back(std::pair<__int64, __int64>((y << 32) + x1 + 0x4000000040000000i64, (y << 32) + x2 + 0x4000000040000000i64)); // G: damn Avery, this is evil! :)
+                    mOutline.push_back(std::pair<__int64, __int64>((y << 32) + x1 + 0x4000000040000000LL, (y << 32) + x2 + 0x4000000040000000LL)); // G: damn Avery, this is evil! :)
             }
         }
 
@@ -885,8 +922,12 @@ static __forceinline void pixmix2(DWORD *dst, DWORD color, DWORD shapealpha, DWO
            | ((((*dst >> 8) & 0x00ff0000) * ia) & 0xff000000);
 }
 
+#if defined(__aarch64__)
+#include "sse2neon.h"
+#else
 #include <xmmintrin.h>
 #include <emmintrin.h>
+#endif
 
 static __forceinline void pixmix_sse2(DWORD* dst, DWORD color, DWORD alpha)
 {
@@ -926,7 +967,11 @@ static __forceinline void pixmix2_sse2(DWORD* dst, DWORD color, DWORD shapealpha
     *dst = (DWORD)_mm_cvtsi128_si32(r);
 }
 
+#if defined(__aarch64__)
+// mmintrin.h functions are already provided by sse2neon.h included above
+#else
 #include <mmintrin.h>
+#endif
 
 // Calculate a - b clamping to 0 instead of underflowing
 
@@ -941,22 +986,24 @@ static __forceinline DWORD safe_subtract_sse2(DWORD a, DWORD b)
 
 static __forceinline DWORD safe_subtract(DWORD a, DWORD b)
 {
-#ifndef _M_X64
+#if defined(_M_X64) || defined(__aarch64__) || defined(__x86_64__)
+    return safe_subtract_sse2(a, b);
+#else
     __m64 ap = _mm_cvtsi32_si64(a);
     __m64 bp = _mm_cvtsi32_si64(b);
     __m64 rp = _mm_subs_pu16(ap, bp);
     DWORD r = (DWORD)_mm_cvtsi64_si32(rp);
     _mm_empty();
     return r;
-#else
-    return safe_subtract_sse2(a, b);
 #endif
 }
 
 // For CPUID usage in Rasterizer::Draw
+#ifdef _WIN32
 #include "../dsutil/vd.h"
+#endif
 
-static const __int64 _00ff00ff00ff00ff = 0x00ff00ff00ff00ffi64;
+static const int64_t _00ff00ff00ff00ff = 0x00ff00ff00ff00ffLL;
 
 // some helper procedures (Draw is so big)
 void Rasterizer::Draw_noAlpha_spFF_Body_0(RasterizerNfo& rnfo)
@@ -1014,7 +1061,7 @@ void Rasterizer::Draw_noAlpha_sp_Body_0(RasterizerNfo& rnfo)
     // xo is the offset (usually negative) we have moved into the image
     // So if we have passed the switchpoint (?) switch to another colour
     // (So switchpts stores both colours *and* coordinates?)
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     int color2 = rnfo.sw[2];
     while(h--)
     {
@@ -1035,7 +1082,7 @@ void Rasterizer::Draw_noAlpha_sp_noBody_0(RasterizerNfo& rnfo)
     byte* src = rnfo.src;
     DWORD* dst = rnfo.dst;
 
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     int color2 = rnfo.sw[2];
     while(h--)
     {
@@ -1092,7 +1139,7 @@ void Rasterizer::Draw_Alpha_spFF_noBody_0(RasterizerNfo& rnfo)
     byte* src = rnfo.src;
     DWORD* dst = rnfo.dst;
 
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     int color2 = rnfo.sw[2];
     while(h--)
     {
@@ -1156,7 +1203,7 @@ void Rasterizer::Draw_Alpha_sp_noBody_0(RasterizerNfo& rnfo)
 
     byte* src = rnfo.src;
     DWORD* dst = rnfo.dst;
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     int color2 = rnfo.sw[2];
     while(h--)
     {
@@ -1235,7 +1282,7 @@ void Rasterizer::Draw_noAlpha_sp_Body_sse2(RasterizerNfo& rnfo)
     // xo is the offset (usually negative) we have moved into the image
     // So if we have passed the switchpoint (?) switch to another colour
     // (So switchpts stores both colours *and* coordinates?)
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     int color2 = rnfo.sw[2];
     while(h--)
     {
@@ -1256,7 +1303,7 @@ void Rasterizer::Draw_noAlpha_sp_noBody_sse2(RasterizerNfo& rnfo)
 
     byte* src = rnfo.src;
     DWORD* dst = rnfo.dst;
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     int color2 = rnfo.sw[2];
     while(h--)
     {
@@ -1341,7 +1388,7 @@ void Rasterizer::Draw_Alpha_sp_Body_sse2(RasterizerNfo& rnfo)
     byte* s = rnfo.s;
     DWORD* dst = rnfo.dst;
 
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     int color2 = rnfo.sw[2];
     while(h--)
     {
@@ -1376,7 +1423,7 @@ void Rasterizer::Draw_Alpha_sp_noBody_sse2(RasterizerNfo& rnfo)
     byte* src = rnfo.src;
     DWORD* dst = rnfo.dst;
 
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     int color2 = rnfo.sw[2];
     while(h--)
     {
@@ -1450,7 +1497,7 @@ void Rasterizer::Draw_Grad_noAlpha_sp_Body_0(RasterizerNfo& rnfo)
     int h = rnfo.h;
     int w = rnfo.w;
 
-    int gran = max(rnfo.sw[3] + 1 - rnfo.xo, 0);
+    int gran = max((int)(rnfo.sw[3] + 1 - rnfo.xo), 0);
     while(h--)
     {
         for(int wt = 0; wt < gran; ++wt)
@@ -1473,7 +1520,7 @@ void Rasterizer::Draw_Grad_noAlpha_sp_noBody_0(RasterizerNfo& rnfo)
     int h = rnfo.h;
     int w = rnfo.w;
 
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     while(h--)
     {
         for(int wt = 0; wt < gran; ++wt)
@@ -1531,7 +1578,7 @@ void Rasterizer::Draw_Grad_Alpha_sp_Body_0(RasterizerNfo& rnfo)
     MOD_GRADIENT mod_grad = rnfo.mod_grad;
     MOD_MOVEVC mod_vc = rnfo.mod_vc;
 
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     byte* s = rnfo.s;
     DWORD* dst = rnfo.dst;
 
@@ -1555,7 +1602,7 @@ void Rasterizer::Draw_Grad_Alpha_sp_noBody_0(RasterizerNfo& rnfo)
     MOD_GRADIENT mod_grad = rnfo.mod_grad;
     MOD_MOVEVC mod_vc = rnfo.mod_vc;
 
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     byte* src = rnfo.src;
     DWORD* dst = rnfo.dst;
 
@@ -1625,7 +1672,7 @@ void Rasterizer::Draw_Grad_noAlpha_sp_Body_sse2(RasterizerNfo& rnfo)
 
     int h = rnfo.h;
     int w = rnfo.w;
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     while(h--)
     {
         for(int wt = 0; wt < gran; ++wt)
@@ -1647,7 +1694,7 @@ void Rasterizer::Draw_Grad_noAlpha_sp_noBody_sse2(RasterizerNfo& rnfo)
 
     int h = rnfo.h;
     int w = rnfo.w;
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     while(h--)
     {
         for(int wt = 0; wt < gran; ++wt)
@@ -1712,7 +1759,7 @@ void Rasterizer::Draw_Grad_Alpha_sp_Body_sse2(RasterizerNfo& rnfo)
 
     int h = rnfo.h;
     int w = rnfo.w;
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     while(h--)
     {
         for(int wt = 0; wt < gran; ++wt)
@@ -1735,7 +1782,7 @@ void Rasterizer::Draw_Grad_Alpha_sp_noBody_sse2(RasterizerNfo& rnfo)
 
     int h = rnfo.h;
     int w = rnfo.w;
-    int gran = min(rnfo.sw[3] + 1 - rnfo.xo, rnfo.w);
+    int gran = min((int)(rnfo.sw[3] + 1 - rnfo.xo), rnfo.w);
     while(h--)
     {
         for(int wt = 0; wt < gran; ++wt)
@@ -1804,7 +1851,11 @@ CRect Rasterizer::Draw(SubPicDesc& spd, CRect& clipRect, byte* pAlphaMask, int x
     bbox &= CRect(0, 0, spd.w, spd.h);
 
     // CPUID from VDub
+    #ifdef _WIN32
     bool fSSE2 = !!(g_cpuid.m_flags & CCpuID::sse2);
+#else
+    bool fSSE2 = true; // Always available via sse2neon or native
+#endif
 
 #ifdef _VSMOD // patch m006. moveable vector clip
     mod_vc.hfull = h;
@@ -2106,7 +2157,7 @@ CRect Rasterizer::Draw(SubPicDesc& spd, CRect& clipRect, byte* pAlphaMask, int x
     // Remember to EMMS!
     // Rendering fails in funny ways if we don't do this.
 
-#ifndef _M_X64
+#if !defined(_M_X64) && !defined(__aarch64__) && !defined(__x86_64__)
     _mm_empty();
 #endif
 
@@ -2117,7 +2168,11 @@ CRect Rasterizer::Draw(SubPicDesc& spd, CRect& clipRect, byte* pAlphaMask, int x
 #if 0
 void Rasterizer::FillSolidRect(SubPicDesc& spd, int x, int y, int nWidth, int nHeight, DWORD lColor)
 {
+    #ifdef _WIN32
     bool fSSE2 = !!(g_cpuid.m_flags & CCpuID::sse2);
+#else
+    bool fSSE2 = true; // Always available via sse2neon or native
+#endif
 
     // Warning : lColor is AARRGGBB (same format as DirectX D3DCOLOR_ARGB)
     for(int wy = y; wy < y + nHeight; wy++)
@@ -2130,7 +2185,11 @@ void Rasterizer::FillSolidRect(SubPicDesc& spd, int x, int y, int nWidth, int nH
 #else
 void Rasterizer::FillSolidRect(SubPicDesc& spd, int x, int y, int nWidth, int nHeight, DWORD lColor)
 {
+    #ifdef _WIN32
     bool fSSE2 = !!(g_cpuid.m_flags & CCpuID::sse2);
+#else
+    bool fSSE2 = true; // Always available via sse2neon or native
+#endif
 
     for(int wy = y; wy < y + nHeight; wy++)
     {
@@ -2165,9 +2224,9 @@ void MOD_MOVEVC::clear()
     isInverse = false;
 }
 
-byte MOD_MOVEVC::GetAlphaValue(int wx, int wy)
+unsigned char MOD_MOVEVC::GetAlphaValue(int wx, int wy)
 {
-    byte alpham;
+    unsigned char alpham;
     if(!enable)
     {
 //		return 0xFF;

@@ -53,7 +53,8 @@ void GlyphPath::MovePoints(const CPoint& o)
 
     unsigned int i = 0;
 
-    if(!!(g_cpuid.m_flags & CCpuID::sse2) && !((DWORD_PTR)p & 7))
+#if defined(__SSE2__) || defined(__aarch64__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+    if(!((DWORD_PTR)p & 7))
     {
         for(; i < n && ((DWORD_PTR)&p[i] & 15); i++)
         {
@@ -75,6 +76,7 @@ void GlyphPath::MovePoints(const CPoint& o)
             _mm_store_si128((__m128i*)&p[i+6], _mm_add_epi32(r3, oo));
         }
     }
+#endif
 
     for(; i < n; i++)
     {

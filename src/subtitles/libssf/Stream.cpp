@@ -46,7 +46,7 @@ void Stream::ThrowError(LPCTSTR fmt, ...)
     if(len > 0) _vstprintf_s(str.GetBufferSetLength(len), len, fmt, args);
     va_end(args);
 
-    throw Exception(_T("Error (Ln %d Col %d): %s"), m_line + 1, m_col + 1, str);
+    throw Exception(_T("Error (Ln %d Col %d): %s"), m_line + 1, m_col + 1, (LPCTSTR)str);
 }
 
 bool Stream::IsWhiteSpace(int c, LPCWSTR morechars)
@@ -216,7 +216,14 @@ int InputStream::SkipWhiteSpace(LPCWSTR morechars)
 FileInputStream::FileInputStream(const TCHAR* fn)
     : m_file(NULL)
 {
+#ifdef _WIN32
     if(_tfopen_s(&m_file, fn, _T("r")) != 0) ThrowError(_T("cannot open file '%s'"), fn);
+#else
+    // Convert wchar_t filename to char for fopen
+    CStringA fn8(fn);
+    m_file = fopen((const char*)fn8, "r");
+    if(!m_file) ThrowError(_T("cannot open file '%s'"), fn);
+#endif
 }
 
 FileInputStream::~FileInputStream()

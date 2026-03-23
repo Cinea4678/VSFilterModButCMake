@@ -25,9 +25,51 @@
 #include <time.h>
 #include "RTS.h"
 
+#ifndef _WIN32
+#include "../platform/font_engine.h"
+#endif
+
 // WARNING: this isn't very thread safe, use only one RTS a time.
 static HDC g_hDC;
 static int g_hDC_refcnt = 0;
+
+#ifndef _WIN32
+// Convert IFontEngine PathCommand vector to GDI-style POINT/BYTE arrays.
+// After FT_Outline_Decompose, we only get MoveTo, LineTo, CubicBezierTo
+// (conics are converted to cubics in the conic_to callback), and CloseFigure.
+static void ConvertPathCommandsToGDI(const std::vector<PathCommand>& cmds,
+                                      std::vector<POINT>& points,
+                                      std::vector<BYTE>& types)
+{
+    points.clear();
+    types.clear();
+    points.reserve(cmds.size());
+    types.reserve(cmds.size());
+
+    for (const auto& cmd : cmds) {
+        switch (cmd.type) {
+        case PathCommandType::MoveTo:
+            points.push_back(cmd.pt);
+            types.push_back(PT_MOVETO);
+            break;
+        case PathCommandType::LineTo:
+            points.push_back(cmd.pt);
+            types.push_back(PT_LINETO);
+            break;
+        case PathCommandType::QuadSplineTo:
+        case PathCommandType::CubicBezierTo:
+            points.push_back(cmd.pt);
+            types.push_back(PT_BEZIERTO);
+            break;
+        case PathCommandType::CloseFigure:
+            if (!types.empty()) {
+                types.back() |= PT_CLOSEFIGURE;
+            }
+            break;
+        }
+    }
+}
+#endif
 
 static long revcolor(long c)
 {
@@ -52,6 +94,7 @@ CMyFont::CMyFont(STSStyle& style)
     lf.lfOrientation = (LONG)style.mod_fontOrient;
 #endif
 
+#ifdef _WIN32
     if(!CreateFontIndirect(&lf))
     {
         _tcscpy(lf.lfFaceName, _T("Arial"));
@@ -64,6 +107,17 @@ CMyFont::CMyFont(STSStyle& style)
     m_ascent = ((tm.tmAscent + 4) >> 3);
     m_descent = ((tm.tmDescent + 4) >> 3);
     SelectFont(g_hDC, hOldFont);
+#else
+    m_fontInstance = IFontEngine::GetInstance().CreateFont(lf);
+    if (m_fontInstance) {
+        FontMetrics fm = m_fontInstance->GetMetrics();
+        m_ascent = ((fm.ascent + 4) >> 3);
+        m_descent = ((fm.descent + 4) >> 3);
+    } else {
+        m_ascent = 0;
+        m_descent = 0;
+    }
+#endif
 }
 
 // CWord
@@ -146,7 +200,11 @@ void CWord::Paint(CPoint p, CPoint org)
 }
 
 #ifdef _VSMOD
+#if defined(__aarch64__)
+#include "sse2neon.h"
+#elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 #include <emmintrin.h>
+#endif
 #endif
 
 void CWord::Transform(CPoint org)
@@ -169,8 +227,13 @@ void CWord::Transform(CPoint org)
     double zrnd = m_style.mod_rand.Z * 100;
 
     srand(m_style.mod_rand.Seed);
-    // CPUID from VDub
+#if defined(__SSE2__) || defined(__aarch64__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+    bool fSSE2 = true;
+#elif defined(_WIN32)
     bool fSSE2 = !!(g_cpuid.m_flags & CCpuID::sse2);
+#else
+    bool fSSE2 = false;
+#endif
 
     // SSE code
     // speed up ~1.5-1.7x
@@ -311,7 +374,7 @@ void CWord::Transform(CPoint org)
             // randomize
             if(xrnd!=0 || yrnd!=0 || zrnd!=0)
             {
-                __declspec(align(16)) float rx[4], ry[4], rz[4]; 
+                alignas(16) float rx[4], ry[4], rz[4]; 
                 for(int k=0;k<4;k++)
                 {
                     rx[k] = xrnd > 0 ? (xrnd - rand() % (int)(xrnd * 2 + 1)) : 0;
@@ -415,16 +478,16 @@ void CWord::Transform(CPoint org)
             {
                 for(int k=0;k<mPathPointsM4;k++)
                 {
-                    mpPathPoints[i*4+k].x = static_cast<LONG>(__pointx.m128_f32[3-k]);
-                    mpPathPoints[i*4+k].y = static_cast<LONG>(__pointy.m128_f32[3-k]);
+                    mpPathPoints[i*4+k].x = static_cast<LONG>(((float*)&__pointx)[3-k]);
+                    mpPathPoints[i*4+k].y = static_cast<LONG>(((float*)&__pointy)[3-k]);
                 }
             }
             else
             {
                 for(int k=0;k<4;k++)
                 {
-                    mpPathPoints[i*4+k].x = static_cast<LONG>(__pointx.m128_f32[3-k]);
-                    mpPathPoints[i*4+k].y = static_cast<LONG>(__pointy.m128_f32[3-k]);
+                    mpPathPoints[i*4+k].x = static_cast<LONG>(((float*)&__pointx)[3-k]);
+                    mpPathPoints[i*4+k].y = static_cast<LONG>(((float*)&__pointy)[3-k]);
                 }
             }
         }
@@ -550,15 +613,15 @@ CText::CText(STSStyle& style, CStringW str, int ktype, int kstart, int kend, dou
 
     CMyFont font(m_style);
 
-    HFONT hOldFont = SelectFont(g_hDC, font);
-
 #ifdef _VSMOD // patch m007. symbol rotating
     double t = (double)m_style.mod_fontOrient * 3.1415926 / 1800;
 #endif
+
+#ifdef _WIN32
+    HFONT hOldFont = SelectFont(g_hDC, font);
+
     if(m_style.fontSpacing || (long)GetVersion() < 0)
     {
-        bool bFirstPath = true;
-
         for(LPCWSTR s = m_str; *s; s++)
         {
             CSize extent;
@@ -568,13 +631,12 @@ CText::CText(STSStyle& style, CStringW str, int ktype, int kstart, int kend, dou
                 ASSERT(0);
                 return;
             }
-#ifdef _VSMOD // patch m007. symbol rotating
+#ifdef _VSMOD
             m_width += (int)(extent.cx * abs(cos(t)) + extent.cy * abs(sin(t)) + m_style.fontSpacing);
 #else
             m_width += extent.cx + (int)m_style.fontSpacing;
 #endif
         }
-//			m_width -= (int)m_style.fontSpacing; // TODO: subtract only at the end of the line
     }
     else
     {
@@ -585,16 +647,43 @@ CText::CText(STSStyle& style, CStringW str, int ktype, int kstart, int kend, dou
             ASSERT(0);
             return;
         }
-#ifdef _VSMOD // patch m007. symbol rotating
+#ifdef _VSMOD
         m_width += (int)(extent.cx * abs(cos(t)) + extent.cy * abs(sin(t)));
 #else
         m_width += extent.cx;
 #endif
     }
 
-    m_width = (int)(m_style.fontScaleX / 100 * m_width + 4) >> 3;
-
     SelectFont(g_hDC, hOldFont);
+#else // !_WIN32
+    if (font.m_fontInstance) {
+        if(m_style.fontSpacing || (long)GetVersion() < 0)
+        {
+            for(LPCWSTR s = m_str; *s; s++)
+            {
+                CSize extent;
+                font.m_fontInstance->GetCharExtent(*s, &extent);
+#ifdef _VSMOD
+                m_width += (int)(extent.cx * abs(cos(t)) + extent.cy * abs(sin(t)) + m_style.fontSpacing);
+#else
+                m_width += extent.cx + (int)m_style.fontSpacing;
+#endif
+            }
+        }
+        else
+        {
+            CSize extent;
+            font.m_fontInstance->GetTextExtent((const wchar_t*)m_str, m_str.GetLength(), &extent);
+#ifdef _VSMOD
+            m_width += (int)(extent.cx * abs(cos(t)) + extent.cy * abs(sin(t)));
+#else
+            m_width += extent.cx;
+#endif
+        }
+    }
+#endif // _WIN32
+
+    m_width = (int)(m_style.fontScaleX / 100 * m_width + 4) >> 3;
 }
 
 CWord* CText::Copy()
@@ -611,6 +700,7 @@ bool CText::CreatePath()
 {
     CMyFont font(m_style);
 
+#ifdef _WIN32
     HFONT hOldFont = SelectFont(g_hDC, font);
 
     int width = 0;
@@ -653,6 +743,48 @@ bool CText::CreatePath()
     }
 
     SelectFont(g_hDC, hOldFont);
+#else // !_WIN32
+    if (!font.m_fontInstance) return false;
+
+    int width = 0;
+
+    if(m_style.fontSpacing || (long)GetVersion() < 0)
+    {
+        bool bFirst = true;
+
+        for(LPCWSTR s = m_str; *s; s++)
+        {
+            CSize extent;
+            font.m_fontInstance->GetCharExtent(*s, &extent);
+
+            std::vector<PathCommand> cmds;
+            font.m_fontInstance->GetGlyphOutline(s, 1, cmds);
+
+            std::vector<POINT> pts;
+            std::vector<BYTE> tps;
+            ConvertPathCommandsToGDI(cmds, pts, tps);
+
+            if (bFirst) {
+                SetPathData(nullptr, nullptr, 0); // clear existing path
+                bFirst = false;
+            }
+            AppendPathData(pts.data(), tps.data(), (int)pts.size(), width, 0);
+
+            width += extent.cx + (int)m_style.fontSpacing;
+        }
+    }
+    else
+    {
+        std::vector<PathCommand> cmds;
+        font.m_fontInstance->GetGlyphOutline((const wchar_t*)m_str, m_str.GetLength(), cmds);
+
+        std::vector<POINT> pts;
+        std::vector<BYTE> tps;
+        ConvertPathCommandsToGDI(cmds, pts, tps);
+
+        SetPathData(pts.data(), tps.data(), (int)pts.size());
+    }
+#endif // _WIN32
 
     return(true);
 }
@@ -870,8 +1002,9 @@ bool CPolygon::CreatePath()
 
 // CClipper
 
+static STSStyle s_clipperDefaultStyle;
 CClipper::CClipper(CStringW str, CSize size, double scalex, double scaley, bool inverse)
-    : CPolygon(STSStyle(), str, 0, 0, 0, scalex, scaley, 0)
+    : CPolygon(s_clipperDefaultStyle, str, 0, 0, 0, scalex, scaley, 0)
 {
     m_size.cx = m_size.cy = 0;
     m_pAlphaMask = NULL;
@@ -1667,6 +1800,7 @@ CRenderedTextSubtitle::CRenderedTextSubtitle(CCritSec* pLock, STSStyle *styleOve
 
     if(g_hDC_refcnt == 0)
     {
+#ifdef _WIN32
         g_hDC = CreateCompatibleDC(NULL);
 #ifdef _VSMOD // patch m007. symbol rotating
         SetGraphicsMode(g_hDC, GM_ADVANCED); // patch for lfOrientation
@@ -1674,6 +1808,7 @@ CRenderedTextSubtitle::CRenderedTextSubtitle(CCritSec* pLock, STSStyle *styleOve
         SetBkMode(g_hDC, TRANSPARENT);
         SetTextColor(g_hDC, 0xffffff);
         SetMapMode(g_hDC, MM_TEXT);
+#endif
     }
 
     g_hDC_refcnt++;
@@ -1684,7 +1819,9 @@ CRenderedTextSubtitle::~CRenderedTextSubtitle()
     Deinit();
 
     g_hDC_refcnt--;
+#ifdef _WIN32
     if(g_hDC_refcnt == 0) DeleteDC(g_hDC);
+#endif
 }
 
 void CRenderedTextSubtitle::Copy(CSimpleTextSubtitle& sts)
@@ -1778,7 +1915,7 @@ void CRenderedTextSubtitle::ParseEffect(CSubtitle* sub, CString str)
         if(!e) return;
 
         sub->m_effects[e->type = EF_BANNER] = e;
-        e->param[0] = (int)(max(1.0 * delay / sub->m_scalex, 1));
+        e->param[0] = (int)(max(1.0 * delay / sub->m_scalex, 1.0));
         e->param[1] = lefttoright;
         e->param[2] = (int)(sub->m_scalex * fadeawaywidth);
 
@@ -1802,7 +1939,7 @@ void CRenderedTextSubtitle::ParseEffect(CSubtitle* sub, CString str)
         sub->m_effects[e->type = EF_SCROLL] = e;
         e->param[0] = (int)(sub->m_scaley * top * 8);
         e->param[1] = (int)(sub->m_scaley * bottom * 8);
-        e->param[2] = (int)(max(1.0 * delay / sub->m_scaley, 1));
+        e->param[2] = (int)(max(1.0 * delay / sub->m_scaley, 1.0));
         e->param[3] = (effect.GetLength() == 12);
         e->param[4] = (int)(sub->m_scaley * fadeawayheight);
     }
@@ -2329,7 +2466,7 @@ bool CRenderedTextSubtitle::ParseSSATag(CSubtitle* sub, CStringW str, STSStyle& 
             }
             else if(params.GetCount() == 2 && !sub->m_pClipper)
             {
-                int scale = max(wcstol(p, NULL, 10), 1);
+                int scale = (int)max(wcstol(p, NULL, 10), 1L);
                 sub->m_pClipper = DNew CClipper(params[1], CSize(m_size.cx >> 3, m_size.cy >> 3), sub->m_scalex / (1 << (scale - 1)), sub->m_scaley / (1 << (scale - 1)), invert);
             }
             else if(params.GetCount() == 4)
@@ -3352,12 +3489,12 @@ STDMETHODIMP_(POSITION) CRenderedTextSubtitle::GetNext(POSITION pos)
 
 STDMETHODIMP_(REFERENCE_TIME) CRenderedTextSubtitle::GetStart(POSITION pos, double fps)
 {
-    return(10000i64 * TranslateSegmentStart((int)pos - 1, fps));
+    return(10000LL * TranslateSegmentStart((int)pos - 1, fps));
 }
 
 STDMETHODIMP_(REFERENCE_TIME) CRenderedTextSubtitle::GetStop(POSITION pos, double fps)
 {
-    return(10000i64 * TranslateSegmentEnd((int)pos - 1, fps));
+    return(10000LL * TranslateSegmentEnd((int)pos - 1, fps));
 }
 
 STDMETHODIMP_(bool) CRenderedTextSubtitle::IsAnimated(POSITION pos)
@@ -3914,7 +4051,13 @@ STDMETHODIMP CRenderedTextSubtitle::Render(SubPicDesc& spd, REFERENCE_TIME rt, d
 
 STDMETHODIMP CRenderedTextSubtitle::GetClassID(CLSID* pClassID)
 {
+#ifdef _WIN32
     return pClassID ? *pClassID = __uuidof(this), S_OK : E_POINTER;
+#else
+    if (!pClassID) return E_POINTER;
+    memset(pClassID, 0, sizeof(*pClassID));
+    return S_OK;
+#endif
 }
 
 // ISubStream
@@ -3926,21 +4069,30 @@ STDMETHODIMP_(int) CRenderedTextSubtitle::GetStreamCount()
 
 STDMETHODIMP CRenderedTextSubtitle::GetStreamInfo(int iStream, WCHAR** ppName, LCID* pLCID)
 {
-    USES_CONVERSION;
     if(iStream != 0) return E_INVALIDARG;
 
     if(ppName)
     {
+#ifdef _WIN32
+        USES_CONVERSION;
         if(!(*ppName = (WCHAR*)CoTaskMemAlloc((m_name.GetLength() + 1) * sizeof(WCHAR))))
             return E_OUTOFMEMORY;
+#else
+        *ppName = (WCHAR*)malloc((m_name.GetLength() + 1) * sizeof(WCHAR));
+        if(!*ppName) return E_OUTOFMEMORY;
+#endif
 
         wcscpy(*ppName, CStringW(m_name));
 
         if(pLCID)
         {
+#ifdef _WIN32
             *pLCID = ISO6391ToLcid(W2A(*ppName));
             if(*pLCID == 0)
                 *pLCID = ISO6392ToLcid(W2A(*ppName));
+#else
+            *pLCID = 0;
+#endif
         }
     }
 
@@ -3959,7 +4111,9 @@ STDMETHODIMP CRenderedTextSubtitle::SetStream(int iStream)
 
 STDMETHODIMP CRenderedTextSubtitle::Reload()
 {
+#ifdef _WIN32
     CFileStatus s;
     if(!CFile::GetStatus(m_path, s)) return E_FAIL;
+#endif
     return !m_path.IsEmpty() && Open(m_path, DEFAULT_CHARSET) ? S_OK : E_FAIL;
 }

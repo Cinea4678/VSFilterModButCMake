@@ -21,7 +21,9 @@
 
 #pragma once
 
+#ifdef _WIN32
 #include <atlcoll.h>
+#endif
 
 enum exttype {EXTSRT = 0, EXTSUB, EXTSMI, EXTPSB, EXTSSA, EXTASS, EXTIDX, EXTUSF, EXTXSS, EXTRT};
 extern TCHAR* exttypestr[];

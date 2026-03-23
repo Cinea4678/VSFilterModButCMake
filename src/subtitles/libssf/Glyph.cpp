@@ -232,7 +232,7 @@ void Glyph::Transform(GlyphPath& path, CPoint org, const CRect& subrect)
                 yy = y;
                 zz = x * say - z * cay;
 
-                zz = 1.0f / (max(zz, -19000) + 20000);
+                zz = 1.0f / (max(zz, -19000.0f) + 20000);
 
                 x = (xx * 20000) * zz;
                 y = (yy * 20000) * zz;

@@ -21,11 +21,13 @@
 
 #pragma once
 
+#ifdef _WIN32
 #include <atlcoll.h>
+#endif
 #include "SubtitleFile.h"
 #include "Array.h"
 #include "GlyphPath.h"
-#include "..\..\SubPic\ISubPic.h"
+#include "../../subpic/ISubPic.h"
 
 namespace ssf
 {
@@ -47,15 +49,15 @@ private:
         {
             unsigned __int64 first, second;
         };
-        union Span() {}
-        union Span(int _x1, int _y1, int _x2, int _y2)
+        Span() {}
+        Span(int _x1, int _y1, int _x2, int _y2)
         {
             x1 = _x1;
             y1 = _y1;
             x2 = _x2;
             y2 = _y2;
         }
-        union Span(unsigned __int64 _first, unsigned __int64 _second)
+        Span(unsigned __int64 _first, unsigned __int64 _second)
         {
             first = _first;
             second = _second;

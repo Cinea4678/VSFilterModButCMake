@@ -21,7 +21,9 @@
 
 #pragma once
 
+#ifdef _WIN32
 #include <atlcoll.h>
+#endif
 #include "GlyphPath.h"
 #include "FontWrapper.h"
 #include "Rasterizer.h"

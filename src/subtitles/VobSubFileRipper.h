@@ -21,7 +21,9 @@
 
 #pragma once
 
+#ifdef _WIN32
 #include <atlcoll.h>
+#endif
 #include "decss\VobFile.h"
 #include "VobSubFile.h"
 

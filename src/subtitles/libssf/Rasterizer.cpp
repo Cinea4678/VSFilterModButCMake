@@ -322,8 +322,8 @@ bool Rasterizer::ScanConvert(GlyphPath& path, const CRect& bbox)
                 if(x2 > x1)
                 {
                     Span s(x1, y, x2, y);
-                    s.first += 0x4000000040000000i64;
-                    s.second += 0x4000000040000000i64;
+                    s.first += 0x4000000040000000LL;
+                    s.second += 0x4000000040000000LL;
                     mOutline.Add(s);
                 }
             }
@@ -562,7 +562,7 @@ bool Rasterizer::Rasterize(int xsub, int ysub)
         {
             for(ptrdiff_t i = 0; i < mOverlayWidth; i++)
             {
-                p[i*4+2] = min(p[i*4+1], (1 << 6) - p[i*4]); // TODO: sse2
+                p[i*4+2] = min((int)p[i*4+1], (1 << 6) - (int)p[i*4]); // TODO: sse2
             }
         }
     }
@@ -698,7 +698,13 @@ CRect Rasterizer::Draw(const SubPicDesc& spd, const CRect& clip, int xsub, int y
 
     DWORD color = switchpts[0];
 
+#if defined(_WIN32)
     bool fSSE2 = !!(g_cpuid.m_flags & CCpuID::sse2);
+#elif defined(__SSE2__) || defined(__aarch64__)
+    bool fSSE2 = true;
+#else
+    bool fSSE2 = false;
+#endif
 
     while(h--)
     {
