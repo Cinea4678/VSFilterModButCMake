@@ -26,6 +26,16 @@ target_include_directories(dsutil PRIVATE
 
 target_link_libraries(dsutil PUBLIC BaseClasses)
 
+# System libraries needed by dsutil (DirectShow GUIDs, AVI, version info).
+# PUBLIC so consumers (vsfiltermod_plugin, VSFilterMod) get them automatically.
+if(MSVC)
+    target_link_libraries(dsutil PUBLIC
+        strmiids.lib
+        vfw32.lib
+        Version.lib
+    )
+endif()
+
 target_compile_definitions(dsutil PRIVATE
     $<$<PLATFORM_ID:Windows>:WIN32>
 )
