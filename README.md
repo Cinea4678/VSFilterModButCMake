@@ -16,6 +16,7 @@ Usage
 Knowing Issues
 =====
 * Opentype font (such as Source Han Sans) has a much smaller size when displayed vertically (used like @Source Han Sans). (subtitle renders which origin from VSFilter use GDI to render fonts, but GDI performs badly on opentype fonts.)
+* SSF subtitle format is not supported on macOS/Linux. The SSF renderer depends on GDI font metrics (TEXTMETRIC, kerning pairs) which have no implementation on non-Windows platforms. ASS/SRT subtitles work normally.
 
 Use VSFilterMod in MPC-BE
 ====
