@@ -79,11 +79,6 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
     include_directories(${sse2neon_SOURCE_DIR})
 endif()
 
-# Enable MASM for 32-bit Windows builds (dsutil assembly files)
-if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 4)
-    enable_language(ASM_MASM)
-endif()
-
 # Build third-party libraries
 add_subdirectory(src/zlib)
 add_subdirectory(src/libpng)

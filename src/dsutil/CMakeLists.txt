@@ -31,18 +31,39 @@ target_compile_definitions(dsutil PRIVATE
 )
 
 # Assembly files - Windows Win32 only (all 3 asm files use 32-bit MASM syntax
-# and are ExcludedFromBuild on x64 in the original vcxproj)
-# Note: enable_language(ASM_MASM) is in the root CMakeLists.txt so the VS
-# generator sees it at project level before any targets are defined.
+# and are ExcludedFromBuild on x64 in the original vcxproj).
+# Use add_custom_command to invoke ml.exe directly, matching the original
+# vcxproj CustomBuild approach (CMake's ASM_MASM language integration is
+# unreliable with the Visual Studio generator).
 if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 4)
-    set_source_files_properties(a_yuv2rgb.asm convert_a.asm PROPERTIES
-        LANGUAGE ASM_MASM
-        COMPILE_FLAGS "/safeseh"
+    set(_dsutil_asm_objs "")
+    foreach(_asm_src a_yuv2rgb.asm a_yuvtable.asm convert_a.asm)
+        get_filename_component(_asm_name "${_asm_src}" NAME_WE)
+        set(_asm_obj "${CMAKE_CURRENT_BINARY_DIR}/${_asm_name}.obj")
+
+        # a_yuvtable.asm does not use /safeseh
+        if(_asm_src STREQUAL "a_yuvtable.asm")
+            set(_safeseh_flag "")
+        else()
+            set(_safeseh_flag /safeseh)
+        endif()
+
+        add_custom_command(
+            OUTPUT "${_asm_obj}"
+            COMMAND ml ${_safeseh_flag} /c /coff /Cx /nologo
+                    /Fo "${_asm_obj}" "${CMAKE_CURRENT_SOURCE_DIR}/${_asm_src}"
+            DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${_asm_src}"
+            COMMENT "Assembling ${_asm_src}"
+            VERBATIM
+        )
+        list(APPEND _dsutil_asm_objs "${_asm_obj}")
+    endforeach()
+
+    set_source_files_properties(${_dsutil_asm_objs} PROPERTIES
+        EXTERNAL_OBJECT TRUE
+        GENERATED TRUE
     )
-    set_source_files_properties(a_yuvtable.asm PROPERTIES
-        LANGUAGE ASM_MASM
-    )
-    target_sources(dsutil PRIVATE a_yuv2rgb.asm a_yuvtable.asm convert_a.asm)
+    target_sources(dsutil PRIVATE ${_dsutil_asm_objs})
 endif()
 
 # MFC support
