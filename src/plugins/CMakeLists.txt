@@ -33,6 +33,10 @@ target_compile_definitions(vsfiltermod_plugin PRIVATE
     _VSMOD
 )
 
+if(MSVC)
+    target_compile_definitions(vsfiltermod_plugin PRIVATE _AFXDLL)
+endif()
+
 # On non-Windows, link pthread (and dl on Linux)
 if(NOT WIN32)
     target_link_libraries(vsfiltermod_plugin PRIVATE pthread)
