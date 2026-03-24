@@ -37,9 +37,9 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libfreetype-dev libharfbuzz-dev libfontconfig-dev
+        sudo apt-get install -y clang libfreetype-dev libharfbuzz-dev libfontconfig-dev
     - name: Configure CMake
-      run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+      run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
     - name: Build
       run: cmake --build build --config Release
     - name: Prepare artifacts
