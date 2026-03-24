@@ -28,6 +28,30 @@ jobs:
         name: VSFilterMod_${{ matrix.arch }}
         path: dist
 
+  build-linux:
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libfreetype-dev libharfbuzz-dev libfontconfig-dev
+    - name: Configure CMake
+      run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+    - name: Build
+      run: cmake --build build --config Release
+    - name: Prepare artifacts
+      run: |
+        mkdir -p dist
+        cp build/src/plugins/vsfiltermod.so dist/
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: VSFilterMod_Linux_x64
+        path: dist
+
   build-macos:
     runs-on: macos-14
     steps:
